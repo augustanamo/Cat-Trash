@@ -51,6 +51,6 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
 EOF
 
 xattr -cr "${APP_BUNDLE}"
-codesign --force --deep --sign - --identifier com.cattrash.desktoppet "${APP_BUNDLE}"
+codesign --force --deep --sign - --identifier com.cattrash.desktoppet -r='designated => identifier "com.cattrash.desktoppet"' "${APP_BUNDLE}"
 
 echo "✅ 打包并签名完成：$(pwd)/${APP_BUNDLE}"

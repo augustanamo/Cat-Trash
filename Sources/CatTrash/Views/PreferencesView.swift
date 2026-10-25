@@ -134,6 +134,31 @@ public struct PreferencesView: View {
                         }
                     }
 
+                    // 2. 日夜自然光影模式 (Day/Night Lighting)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Label("日夜光影与景观夜灯", systemImage: "sun.and.horizon.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                            Spacer()
+                            Text(EnvironmentLightingManager.shared.timePhaseDescription)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Picker("光影模式", selection: $prefs.dayNightMode) {
+                            ForEach(DayNightMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                        .font(.system(size: 11.5))
+
+                        Text("✨ 晚 8 点后景观果皮箱小夜灯自动亮起，黑猫金眸幽光绽现，白天还原自然日光采光")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
+
                     // 3. 音效开关与音量
                     VStack(alignment: .leading, spacing: 8) {
                         Label("音效反馈", systemImage: "speaker.wave.2.fill")

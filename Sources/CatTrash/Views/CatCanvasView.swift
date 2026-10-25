@@ -352,20 +352,21 @@ struct TriangleFangShape: Shape {
 public struct CatTrashSceneView: View {
     @ObservedObject var physics = CatPhysicsEngine.shared
     @ObservedObject var prefs = CatPreferences.shared
-    let canvasSize: CGSize
+    let screenFrame: CGRect
 
-    public init(canvasSize: CGSize) {
-        self.canvasSize = canvasSize
+    public init(screenFrame: CGRect) {
+        self.screenFrame = screenFrame
+    }
+
+    private var canvasSize: CGSize {
+        screenFrame.size
     }
 
     private var bucketLocalCenter: CGPoint {
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            return CGPoint(
-                x: physics.bucketScreenCenter.x - screen.frame.minX,
-                y: canvasSize.height - (physics.bucketScreenCenter.y - screen.frame.minY)
-            )
-        }
-        return CGPoint(x: canvasSize.width - 75, y: canvasSize.height - 75)
+        CGPoint(
+            x: physics.bucketScreenCenter.x - screenFrame.minX,
+            y: screenFrame.height - (physics.bucketScreenCenter.y - screenFrame.minY)
+        )
     }
 
     private var widgetScale: CGFloat {
@@ -553,6 +554,12 @@ public struct CatTrashSceneView: View {
                         .position(bucketLocalCenter)
                 }
 
+                // 4C. 街头果皮箱夜间小夜灯：夜晚由顶棚向正面投下的静谧微弱暖晕（极柔和的自然氛围）
+                if isStreetBox && EnvironmentLightingManager.shared.nightFactor > 0.05 {
+                    StreetBoxNightAmbientView()
+                        .position(bucketLocalCenter)
+                }
+
                 // 5. 街头果皮箱「从上方暗格向前拖出」阶段：猫猫身体与脑袋从暗格窗口向前钻出，越过前门板与外框并投下立体阴影！
                 // 严格以门板上沿为界裁切，确保下半身整洁藏在门板后方，消除下挂穿模耷拉肚皮
                 if isPoppedOutOfStreetCompartment {
@@ -661,12 +668,9 @@ public struct CatTrashSceneView: View {
     }
 
     private func screenToLocal(_ screenPt: CGPoint) -> CGPoint {
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            return CGPoint(
-                x: screenPt.x - screen.frame.minX,
-                y: canvasSize.height - (screenPt.y - screen.frame.minY)
-            )
-        }
-        return screenPt
+        CGPoint(
+            x: screenPt.x - screenFrame.minX,
+            y: screenFrame.height - (screenPt.y - screenFrame.minY)
+        )
     }
 }

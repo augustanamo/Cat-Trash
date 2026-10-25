@@ -1,47 +1,88 @@
 import AppKit
 import SwiftUI
 
-/// 透明无边框悬浮面板：负责全屏渲染拉伸动画 + 仅在猫猫与网格桶区域拦截鼠标与文件拖放事件
+/// 透明无边框悬浮面板：跨多显示器独立渲染 + 全局鼠标穿透与文件拖拽投喂
 @MainActor
 public final class CatOverlayWindowController: NSObject {
     public static let shared = CatOverlayWindowController()
 
-    private var overlayPanel: NSPanel?
+    private var overlayPanels: [NSPanel] = []
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
+    private var screenChangeObserver: Any?
 
     private override init() {
         super.init()
     }
 
     public func showOverlay() {
-        guard overlayPanel == nil else { return }
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-
-        let panel = NSPanel(
-            contentRect: screen.frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.level = .floating
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.ignoresMouseEvents = true
-
-        let containerView = CatDropAndHitTestView(frame: screen.frame)
-        let hostingView = NSHostingView(rootView: CatTrashSceneView(canvasSize: screen.frame.size))
-        hostingView.frame = containerView.bounds
-        hostingView.autoresizingMask = [.width, .height]
-        containerView.addSubview(hostingView)
-
-        panel.contentView = containerView
-        panel.orderFrontRegardless()
-        self.overlayPanel = panel
-
+        guard overlayPanels.isEmpty else { return }
+        buildPanelsForConnectedScreens()
         startMousePassThroughMonitors()
+        startScreenChangeObservation()
+    }
+
+    /// 为所有已连接的显示器（主屏、副屏、外接竖屏等）分别构建独立的透明悬浮层
+    private func buildPanelsForConnectedScreens() {
+        for panel in overlayPanels {
+            panel.orderOut(nil)
+            panel.close()
+        }
+        overlayPanels.removeAll()
+
+        for screen in NSScreen.screens {
+            let panel = NSPanel(
+                contentRect: screen.frame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            panel.level = .floating
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = false
+            // 解决跨显示器核心问题 1：在其他屏幕或应用获得焦点时不自动隐藏
+            panel.hidesOnDeactivate = false
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+            panel.ignoresMouseEvents = true
+
+            let containerView = CatDropAndHitTestView(
+                frame: NSRect(origin: .zero, size: screen.frame.size),
+                screenFrame: screen.frame
+            )
+            let hostingView = NSHostingView(rootView: CatTrashSceneView(screenFrame: screen.frame))
+            hostingView.frame = containerView.bounds
+            hostingView.autoresizingMask = [.width, .height]
+            containerView.addSubview(hostingView)
+
+            panel.contentView = containerView
+            panel.orderFrontRegardless()
+            overlayPanels.append(panel)
+        }
+    }
+
+    private func startScreenChangeObservation() {
+        guard screenChangeObserver == nil else { return }
+        screenChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleScreensChanged()
+            }
+        }
+    }
+
+    private func handleScreensChanged() {
+        buildPanelsForConnectedScreens()
+        // 若当前垃圾桶坐标不再位于任何屏幕可视区域内，自动吸附回最适合的屏幕右下角
+        let currentCenter = CatPhysicsEngine.shared.bucketScreenCenter
+        let isOnScreen = NSScreen.screens.contains { $0.frame.contains(currentCenter) }
+        if !isOnScreen {
+            CatPhysicsEngine.shared.snapBucketToBottomRightCorner()
+        }
+        updateMouseEventInterception()
     }
 
     /// 动态切换鼠标穿透，并在模式 A 拖拽猫头开启穿透时依然能全局追踪鼠标移动与松手
@@ -69,9 +110,11 @@ public final class CatOverlayWindowController: NSObject {
         let mouse = NSEvent.mouseLocation
         let isOption = event.modifierFlags.contains(.option)
 
-        // 若正在进行模式 A（拉拽猫头），保持窗口穿透以便底层桌面文件可被无遮挡探测，同时实时更新猫头坐标与 Option 点化状态
+        // 若正在进行模式 A（拉拽猫头），保持全屏窗口穿透以便底层桌面文件可被无遮挡探测，同时实时更新猫头坐标与 Option 点化状态
         if physics.isDraggingHead {
-            overlayPanel?.ignoresMouseEvents = true
+            for panel in overlayPanels {
+                panel.ignoresMouseEvents = true
+            }
             if event.type == .leftMouseDragged || event.type == .flagsChanged {
                 physics.updateHeadDrag(toScreenPoint: mouse, isOptionPressed: isOption)
             } else if event.type == .leftMouseUp {
@@ -105,45 +148,53 @@ public final class CatOverlayWindowController: NSObject {
     }
 
     private func updateMouseEventInterception() {
-        guard let panel = overlayPanel else { return }
         let physics = CatPhysicsEngine.shared
-
-        if physics.isDraggingHead {
-            // 模式 A 拽猫头时必须开启穿透，防止全屏窗口挡住底层桌面图标探测
-            panel.ignoresMouseEvents = true
-            return
-        }
-
-        if physics.isDraggingBucket || physics.isExternalFileHovering {
-            panel.ignoresMouseEvents = false
-            return
-        }
-
         let mouse = NSEvent.mouseLocation
         let bucket = physics.bucketScreenCenter
         let head = physics.currentHeadScreenPoint
         let s = max(physics.scale, 0.85)
 
-        // 给桶和猫头留出充足的接收范围，同时包含桌面虚拟测试废纸团的点击/悬停
-        let dx = mouse.x - bucket.x
-        let dy = mouse.y - bucket.y
-        let style = CatPreferences.shared.selectedBinStyle
-        let sideClearance = style.sideClearance * s
-        let topY = -style.topSliderOffsetY * s
+        for panel in overlayPanels {
+            guard let screen = panel.screen ?? NSScreen.screens.first(where: { $0.frame == panel.frame }) else {
+                panel.ignoresMouseEvents = true
+                continue
+            }
 
-        var nearFloatingControls = false
-        if physics.isFloatingMenuVisible {
-            let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
-            let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
-            let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
+            let isMouseOnThisScreen = screen.frame.contains(mouse)
 
-            nearFloatingControls = inTopSlider || inRightBins || inLeftControls
+            if physics.isDraggingHead {
+                panel.ignoresMouseEvents = true
+                continue
+            }
+
+            if (physics.isDraggingBucket || physics.isExternalFileHovering) && isMouseOnThisScreen {
+                panel.ignoresMouseEvents = false
+                continue
+            }
+
+            if isMouseOnThisScreen {
+                let dx = mouse.x - bucket.x
+                let dy = mouse.y - bucket.y
+                let style = CatPreferences.shared.selectedBinStyle
+                let sideClearance = style.sideClearance * s
+                let topY = -style.topSliderOffsetY * s
+
+                var nearFloatingControls = false
+                if physics.isFloatingMenuVisible {
+                    let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
+                    let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
+                    let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
+                    nearFloatingControls = inTopSlider || inRightBins || inLeftControls
+                }
+
+                let nearBucket = hypot(dx, dy) < (style == .greenWheelieBin ? 145 : 105) * s
+                let nearHead = hypot(mouse.x - head.x, mouse.y - head.y) < 72 * s
+
+                panel.ignoresMouseEvents = !(nearBucket || nearHead || nearFloatingControls)
+            } else {
+                panel.ignoresMouseEvents = true
+            }
         }
-
-        let nearBucket = hypot(dx, dy) < (style == .greenWheelieBin ? 145 : 105) * s
-        let nearHead = hypot(mouse.x - head.x, mouse.y - head.y) < 72 * s
-
-        panel.ignoresMouseEvents = !(nearBucket || nearHead || nearFloatingControls)
     }
 }
 
@@ -151,6 +202,7 @@ public final class CatOverlayWindowController: NSObject {
 @MainActor
 final class CatDropAndHitTestView: NSView {
     private var dragMode: DragMode = .none
+    let screenFrame: CGRect
 
     private enum DragMode {
         case none
@@ -158,7 +210,8 @@ final class CatDropAndHitTestView: NSView {
         case movingBucket(startOffset: CGVector)
     }
 
-    override init(frame frameRect: NSRect) {
+    init(frame frameRect: NSRect, screenFrame: CGRect) {
+        self.screenFrame = screenFrame
         super.init(frame: frameRect)
         registerForDraggedTypes([.fileURL])
     }

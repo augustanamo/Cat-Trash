@@ -121,7 +121,11 @@ struct GreenWheelieBinBackWallView: View {
 
 /// 样式 D（经典绿色可回收/环卫掀盖大垃圾桶 · 前壁：高耸 3/4 立体双折面 HDPE 绿塑桶身 + 桶口外翻裙檐与 4 道竖向加强筋 + 白色圆形环保扔垃圾图标）
 struct GreenWheelieBinFrontWallView: View {
+    @ObservedObject var lighting = EnvironmentLightingManager.shared
+
     var body: some View {
+        let nightK = lighting.nightFactor
+
         Canvas { context, rawSize in
             let size = CGSize(width: rawSize.width / kGreenBinScale, height: rawSize.height / kGreenBinScale)
             context.scaleBy(x: kGreenBinScale, y: kGreenBinScale)
@@ -136,7 +140,7 @@ struct GreenWheelieBinFrontWallView: View {
             let topCornerX = cx - 15.5
             let botCornerX = cx - 10.5
 
-            // 1. 桶身左侧 3/4 斜切面（受光较亮，带左上角注塑高光反光块）
+            // 1. 桶身左侧 3/4 斜切面（夜晚平滑转为静谧夜深绿）
             var leftFace = Path()
             leftFace.move(to: CGPoint(x: topLeftX, y: rimY + 3.0))
             leftFace.addLine(to: CGPoint(x: topCornerX, y: rimY + 5.0))
@@ -147,13 +151,17 @@ struct GreenWheelieBinFrontWallView: View {
             )
             leftFace.closeSubpath()
 
+            let leftC1 = Color(red: 0.12 - 0.08 * nightK, green: 0.76 - 0.32 * nightK, blue: 0.39 - 0.18 * nightK)
+            let leftC2 = Color(red: 0.07 - 0.05 * nightK, green: 0.68 - 0.30 * nightK, blue: 0.33 - 0.16 * nightK)
+            let leftC3 = Color(red: 0.04 - 0.03 * nightK, green: 0.54 - 0.28 * nightK, blue: 0.25 - 0.14 * nightK)
+
             context.fill(
                 leftFace,
                 with: .linearGradient(
                     Gradient(stops: [
-                        .init(color: Color(red: 0.12, green: 0.76, blue: 0.39), location: 0.0),
-                        .init(color: Color(red: 0.07, green: 0.68, blue: 0.33), location: 0.45),
-                        .init(color: Color(red: 0.04, green: 0.54, blue: 0.25), location: 1.0)
+                        .init(color: leftC1, location: 0.0),
+                        .init(color: leftC2, location: 0.45),
+                        .init(color: leftC3, location: 1.0)
                     ]),
                     startPoint: CGPoint(x: topLeftX, y: rimY),
                     endPoint: CGPoint(x: botCornerX, y: botY)
@@ -174,7 +182,7 @@ struct GreenWheelieBinFrontWallView: View {
                 leftSpec,
                 with: .linearGradient(
                     Gradient(colors: [
-                        Color(red: 0.36, green: 0.88, blue: 0.56).opacity(0.42),
+                        Color(red: 0.36, green: 0.88, blue: 0.56).opacity(0.42 * (1.0 - nightK * 0.5)),
                         Color(red: 0.18, green: 0.78, blue: 0.42).opacity(0.05)
                     ]),
                     startPoint: CGPoint(x: topLeftX, y: rimY + 14),
@@ -193,14 +201,19 @@ struct GreenWheelieBinFrontWallView: View {
             )
             frontFace.closeSubpath()
 
+            let frontC1 = Color(red: 0.14 - 0.09 * nightK, green: 0.78 - 0.35 * nightK, blue: 0.40 - 0.20 * nightK)
+            let frontC2 = Color(red: 0.05 - 0.03 * nightK, green: 0.65 - 0.32 * nightK, blue: 0.31 - 0.16 * nightK)
+            let frontC3 = Color(red: 0.03 - 0.02 * nightK, green: 0.56 - 0.28 * nightK, blue: 0.26 - 0.14 * nightK)
+            let frontC4 = Color(red: 0.02 - 0.01 * nightK, green: 0.45 - 0.24 * nightK, blue: 0.20 - 0.12 * nightK)
+
             context.fill(
                 frontFace,
                 with: .linearGradient(
                     Gradient(stops: [
-                        .init(color: Color(red: 0.14, green: 0.78, blue: 0.40), location: 0.0),
-                        .init(color: Color(red: 0.05, green: 0.65, blue: 0.31), location: 0.18),
-                        .init(color: Color(red: 0.03, green: 0.56, blue: 0.26), location: 0.65),
-                        .init(color: Color(red: 0.02, green: 0.45, blue: 0.20), location: 1.0)
+                        .init(color: frontC1, location: 0.0),
+                        .init(color: frontC2, location: 0.18),
+                        .init(color: frontC3, location: 0.65),
+                        .init(color: frontC4, location: 1.0)
                     ]),
                     startPoint: CGPoint(x: topCornerX, y: rimY),
                     endPoint: CGPoint(x: topRightX, y: rimY)

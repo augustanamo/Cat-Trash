@@ -29,7 +29,7 @@ public final class DesktopFileDetector: ObservableObject {
         return trusted
     }
 
-    /// 请求或重置辅助功能权限（自动清理旧签名残留的失效 TCC 记录并重新弹窗授权）
+    /// 请求辅助功能权限并一键直达系统设置面板
     public func requestAccessibilityPermission() {
         if AXIsProcessTrusted() {
             self.isAccessibilityTrusted = true
@@ -37,17 +37,19 @@ public final class DesktopFileDetector: ObservableObject {
             return
         }
 
-        // 先通过 tccutil 清除之前未签名旧版本残留的失效权限记录，避免开关开了也识别不到
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-        process.arguments = ["reset", "Accessibility", "com.cattrash.desktoppet"]
-        try? process.run()
-        process.waitUntilExit()
-
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
         self.isAccessibilityTrusted = trusted
-        TrashService.shared.lastStatusMessage = "请在弹出的系统设置中勾选「Cat Trash」即可生效"
+
+        if !trusted {
+            // macOS 13+ 快速直达「隐私与安全性 → 辅助功能」
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+            TrashService.shared.lastStatusMessage = "已打开系统设置，请在「隐私与安全性 → 辅助功能」中勾选「Cat Trash」"
+        } else {
+            TrashService.shared.lastStatusMessage = "✅ 辅助功能权限已生效，可直接拽猫头去吃桌面文件！"
+        }
     }
 
     /// 根据当前鼠标屏幕坐标（AppKit 坐标系：主屏左下角为 0,0）探测下方是否有可安全删除的桌面/Finder 文件

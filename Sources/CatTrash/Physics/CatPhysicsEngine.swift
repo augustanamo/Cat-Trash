@@ -172,10 +172,10 @@ public final class CatPhysicsEngine: ObservableObject {
 
     public func resetBucketToDefaultCornerIfNeeded() {
         let prefs = CatPreferences.shared
-        if prefs.placementMode == .freeFloating,
-           prefs.customBucketOriginX > 0,
-           prefs.customBucketOriginY > 0 {
-            bucketScreenCenter = CGPoint(x: prefs.customBucketOriginX, y: prefs.customBucketOriginY)
+        let savedPt = CGPoint(x: prefs.customBucketOriginX, y: prefs.customBucketOriginY)
+        let isSavedPtOnAnyScreen = NSScreen.screens.contains { $0.frame.contains(savedPt) }
+        if prefs.placementMode == .freeFloating && isSavedPtOnAnyScreen {
+            bucketScreenCenter = savedPt
         } else {
             snapBucketToBottomRightCorner()
         }
@@ -185,8 +185,14 @@ public final class CatPhysicsEngine: ObservableObject {
         CGFloat(CatPreferences.shared.widgetScale)
     }
 
-    public func snapBucketToBottomRightCorner() {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+    public func snapBucketToBottomRightCorner(on targetScreen: NSScreen? = nil) {
+        let mousePt = NSEvent.mouseLocation
+        let screen = targetScreen
+            ?? NSScreen.screens.first { $0.frame.contains(mousePt) }
+            ?? NSScreen.screens.first { $0.frame.contains(bucketScreenCenter) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let screen else { return }
         let visible = screen.visibleFrame
         let s = max(scale, 0.85)
         let targetX = visible.maxX - 135 * s
@@ -268,6 +274,31 @@ public final class CatPhysicsEngine: ObservableObject {
 
             headVelocity.dx += forceX * CGFloat(dt)
             headVelocity.dy += forceY * CGFloat(dt)
+
+            // 黑猫烟雾形态专属：空气粘滞阻力与微弱流体阻尼（告别硬弹簧暴烈回抽，呈现烟雾聚拢流体感）
+            if morph == .blackShadow {
+                headVelocity.dx *= pow(0.35, CGFloat(dt))
+                headVelocity.dy *= pow(0.35, CGFloat(dt))
+
+                // 烟雾回聚过程中持续向上消散幽微烟尘微粒
+                let velMag = hypot(headVelocity.dx, headVelocity.dy)
+                if velMag > 12.0 && Float.random(in: 0...1) < 0.35 {
+                    let hp = currentHeadScreenPoint
+                    let pX = hp.x + CGFloat.random(in: -14...14)
+                    let pY = hp.y + CGFloat.random(in: -8...8)
+                    particles.append(
+                        EffectParticle(
+                            position: CGPoint(x: pX, y: pY),
+                            velocity: CGVector(dx: CGFloat.random(in: -16...16) - headVelocity.dx * 0.15, dy: CGFloat.random(in: 25...60)),
+                            scale: CGFloat.random(in: 0.6...1.2),
+                            opacity: 0.65,
+                            age: 0,
+                            lifetime: Double.random(in: 0.4...0.75),
+                            kind: .crumb(Color(red: 0.08, green: 0.06, blue: 0.14))
+                        )
+                    )
+                }
+            }
 
             headDisplacement.dx += headVelocity.dx * CGFloat(dt)
             // 物理回弹：各桶均限制不能向下穿透桶底或内胆底部面板
@@ -851,9 +882,17 @@ public final class CatPhysicsEngine: ObservableObject {
         if pullDist > 22 {
             let morph = CatPreferences.shared.selectedMorph
             CatSoundEngine.shared.playCancelBoing(morph: morph)
-            jiggleAmplitude = min(pullDist / 160.0, 2.2)
+            // 烟雾流体形态无固体刚体剧烈晃动，呈现极弱流体微漾
+            jiggleAmplitude = (morph == .blackShadow) ? 0.15 : min(pullDist / 160.0, 2.2)
             state = .cancelled
-            scheduleReturnToIdle(after: 1.45)
+            let returnDelay: TimeInterval = (morph == .blackShadow) ? 1.75 : 1.45
+            scheduleReturnToIdle(after: returnDelay)
+
+            // 回弹后微弱的桶身物理沉降轻响（烟雾更轻灵飘逸，延迟稍长更柔和）
+            let lidDelay: TimeInterval = (morph == .blackShadow) ? 0.45 : 0.20
+            DispatchQueue.main.asyncAfter(deadline: .now() + lidDelay) {
+                CatSoundEngine.shared.playBinLidClose(bin: CatPreferences.shared.selectedBinStyle)
+            }
         } else {
             // 轻点抚摸猫头：触发呼噜声与开心微震
             CatSoundEngine.shared.playPurr()
@@ -981,14 +1020,18 @@ public final class CatPhysicsEngine: ObservableObject {
         // 1. 吞食瞬间的零食专属配色碎屑与星光粒子爆发
         spawnChompParticles(at: chompScreenLocation, primaryColor: snackType.crumbColor)
 
-        // 2. 0.52 秒后在桶口冒出饱嗝气泡 ("嗝~")
+        // 2. 0.50 秒后在桶口冒出饱嗝气泡 ("嗝~")，随之桶盖自然轻巧闭合
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 520_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000)
             let burpOrigin = CGPoint(
                 x: self.bucketScreenCenter.x + 22,
                 y: self.bucketScreenCenter.y + self.restingHeadYOffset + 18
             )
             self.spawnBurpParticles(at: burpOrigin)
+
+            // 饱嗝过后 0.35 秒，桶盖自然闭合/内胆轻巧沉降复位物理音
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            CatSoundEngine.shared.playBinLidClose(bin: CatPreferences.shared.selectedBinStyle)
         }
 
         scheduleReturnToIdle(after: 1.85)
@@ -1018,7 +1061,7 @@ public final class CatPhysicsEngine: ObservableObject {
         var targetX = bucketScreenCenter.x + cos(angle) * distance
         var targetY = bucketScreenCenter.y + sin(angle) * distance
 
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(bucketScreenCenter) }) ?? NSScreen.main ?? NSScreen.screens.first {
             let visible = screen.visibleFrame.insetBy(dx: 80, dy: 80)
             targetX = min(max(targetX, visible.minX), visible.maxX)
             targetY = min(max(targetY, visible.minY), visible.maxY)

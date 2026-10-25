@@ -90,7 +90,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .calico: return 175.0      // 羊毛毡抱枕缓释回落
         case .tuxedo: return 540.0      // 高张力橡皮糖“啪”地脆弹
         case .siamese: return 88.0      // 软糯麻薯慢吞吞“吸溜”滑回
-        case .blackShadow: return 420.0 // 黑洞瞬吸收缩
+        case .blackShadow: return 72.0  // 暗影烟雾：极低刚度流体聚拢，绝无硬弹簧脆弹
         }
     }
 
@@ -102,7 +102,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .calico: return 19.5      // 温润无多余震颤
         case .tuxedo: return 13.0      // 弹力极大，回桶上下弹跳两下
         case .siamese: return 20.5     // 高黏度过阻尼慢滑
-        case .blackShadow: return 32.0 // 临界阻尼无声瞬吸
+        case .blackShadow: return 26.0 // 强流体粘滞过阻尼，烟雾平滑飘逸收拢聚拢
         }
     }
 
@@ -352,6 +352,14 @@ public final class CatPreferences: ObservableObject {
         didSet { UserDefaults.standard.set(totalTrashedCount, forKey: Keys.totalTrashedCount) }
     }
 
+    /// 自然日夜光影模式（自动跟随时间 / 常驻白昼 / 常驻夜晚）
+    @Published public var dayNightMode: DayNightMode {
+        didSet {
+            UserDefaults.standard.set(dayNightMode.rawValue, forKey: Keys.dayNightMode)
+            EnvironmentLightingManager.shared.updateTargetFactor(immediate: true)
+        }
+    }
+
     private enum Keys {
         static let morph = "catTrash.selectedMorph"
         static let binStyle = "catTrash.selectedBinStyle"
@@ -365,6 +373,7 @@ public final class CatPreferences: ObservableObject {
         static let originX = "catTrash.originX"
         static let originY = "catTrash.originY"
         static let totalTrashedCount = "catTrash.totalTrashedCount"
+        static let dayNightMode = "catTrash.dayNightMode"
     }
 
     private init() {
@@ -401,5 +410,12 @@ public final class CatPreferences: ObservableObject {
         self.customBucketOriginX = defaults.object(forKey: Keys.originX) as? Double ?? -1
         self.customBucketOriginY = defaults.object(forKey: Keys.originY) as? Double ?? -1
         self.totalTrashedCount = defaults.integer(forKey: Keys.totalTrashedCount)
+
+        if let rawDN = defaults.string(forKey: Keys.dayNightMode),
+           let mode = DayNightMode(rawValue: rawDN) {
+            self.dayNightMode = mode
+        } else {
+            self.dayNightMode = .auto
+        }
     }
 }

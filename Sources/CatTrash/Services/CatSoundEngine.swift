@@ -43,8 +43,10 @@ public final class CatSoundEngine {
             // 高张力橡皮糖紧绷声
             playSystemSample(named: "Tink", rate: 0.90 + p * 1.05, volume: vol * 0.30)
         case .siamese:
-            // 软糯麻薯/芝士黏稠“滋溜”声
-            playSystemSample(named: "Frog", rate: 0.72 + p * 0.48, volume: vol * 0.25)
+            // 软糯麻薯/芝士黏稠“滋溜”拉丝声（告别生硬青蛙叫，使用水润饱满滑音与细微气流）
+            playSystemSample(named: "Bottle", rate: 0.88 + p * 0.62, volume: vol * 0.30)
+            playSystemSample(named: "Blow", rate: 0.72 + p * 0.38, volume: vol * 0.16)
+            playSystemSample(named: "Pop", rate: 0.68 + p * 0.45, volume: vol * 0.18)
         case .blackShadow:
             // 暗影水墨消散轻微风声
             playSystemSample(named: "Blow", rate: 1.55 + p * 0.40, volume: vol * 0.18)
@@ -58,11 +60,17 @@ public final class CatSoundEngine {
         guard prefs.vocalSoundEnabled && prefs.soundVolume > 0.01 else { return }
         let vol = Float(prefs.soundVolume)
 
-        // 高音调 Purr 颤音叠加清脆小咕噜声，自然不刺耳
-        playSystemSample(named: "Purr", rate: 1.55, volume: vol * 0.65)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+        // 告别粗糙生硬的青蛙蛙鸣：改用双音阶自然上扬的娇憨奶猫呼噜颤音 (Chirrup)
+        playSystemSample(named: "Purr", rate: 1.35, volume: vol * 0.65)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
             Task { @MainActor in
-                self.playSystemSample(named: "Frog", rate: 1.45, volume: vol * 0.42)
+                self.playSystemSample(named: "Purr", rate: 1.70, volume: vol * 0.48)
+                self.playSystemSample(named: "Blow", rate: 1.45, volume: vol * 0.22)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Task { @MainActor in
+                self.playSystemSample(named: "Bottle", rate: 1.60, volume: vol * 0.30)
             }
         }
     }
@@ -82,36 +90,37 @@ public final class CatSoundEngine {
         NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
     }
 
-    // MARK: - 5. 吞食嗷呜一口 + 吧唧咀嚼 + 小饱嗝 (Chomp & Cute Burp)
+    // MARK: - 5. 吞食嗷呜一口 + 吧唧咀嚼 + 饱嗝圆润萌音 (Chomp & Bubbly Burp)
     public func playChompAndBurp() {
         let prefs = CatPreferences.shared
         guard prefs.chompSoundEnabled && prefs.soundVolume > 0.01 else { return }
         let vol = Float(prefs.soundVolume)
 
-        // 第一口咬下 (Crisp Pop + Funk)
-        playSystemSample(named: "Pop", rate: 0.82, volume: vol * 0.85)
-        playSystemSample(named: "Funk", rate: 1.45, volume: vol * 0.55)
+        // 第一口咬下：软润果冻与水滴吞咽脆响 (Crisp Pop + Bottle)
+        playSystemSample(named: "Pop", rate: 0.88, volume: vol * 0.85)
+        playSystemSample(named: "Bottle", rate: 1.15, volume: vol * 0.50)
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
 
-        // 第二下吧唧嘴
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        // 第二下细腻吧唧嘴
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
             Task { @MainActor in
-                self.playSystemSample(named: "Pop", rate: 1.18, volume: vol * 0.65)
+                self.playSystemSample(named: "Pop", rate: 1.25, volume: vol * 0.60)
             }
         }
 
-        // 第三下吞咽水滴声
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.29) {
+        // 第三下吞咽水润滑落声
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
             Task { @MainActor in
-                self.playSystemSample(named: "Bottle", rate: 1.05, volume: vol * 0.50)
+                self.playSystemSample(named: "Bottle", rate: 0.95, volume: vol * 0.45)
             }
         }
 
-        // 0.52秒后冒出可爱小饱嗝
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.52) {
+        // 0.50秒后冒出圆润气泡式可爱小饱嗝（移除生硬青蛙叫，改用软弹气泡音）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.50) {
             Task { @MainActor in
-                self.playSystemSample(named: "Frog", rate: 0.76, volume: vol * 0.58)
-                self.playSystemSample(named: "Blow", rate: 1.35, volume: vol * 0.35)
+                self.playSystemSample(named: "Bottle", rate: 0.65, volume: vol * 0.52)
+                self.playSystemSample(named: "Submarine", rate: 1.70, volume: vol * 0.35)
+                self.playSystemSample(named: "Blow", rate: 1.25, volume: vol * 0.28)
             }
         }
     }
@@ -124,17 +133,23 @@ public final class CatSoundEngine {
 
         switch snackType {
         case .driedFish:
-            // 干脆小鱼干：清脆咔嚓咀嚼声 (Crunch)
-            playSystemSample(named: "Tink", rate: 1.45, volume: vol * 0.65)
-            playSystemSample(named: "Funk", rate: 1.65, volume: vol * 0.75)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            // 干脆小鱼干：极为清脆细腻的“咔嚓咔嚓”咬碎咀嚼声 (Crispy Crunch)
+            playSystemSample(named: "Pop", rate: 1.65, volume: vol * 0.72)
+            playSystemSample(named: "Tink", rate: 1.35, volume: vol * 0.55)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 Task { @MainActor in
-                    self.playSystemSample(named: "Pop", rate: 1.25, volume: vol * 0.70)
-                    self.playSystemSample(named: "Tink", rate: 1.20, volume: vol * 0.55)
+                    self.playSystemSample(named: "Pop", rate: 1.45, volume: vol * 0.65)
+                    self.playSystemSample(named: "Tink", rate: 1.20, volume: vol * 0.45)
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+                Task { @MainActor in
+                    self.playSystemSample(named: "Pop", rate: 1.75, volume: vol * 0.45)
+                    self.playSystemSample(named: "Purr", rate: 1.15, volume: vol * 0.38)
                 }
             }
         case .freezeDried:
-            // 冻干三文鱼块：软糯咀嚼 + 打饱嗝
+            // 冻干三文鱼块：软糯咀嚼 + 满足小饱嗝
             playChompAndBurp()
         case .catGrass:
             // 猫草薄荷棒：细嚼慢咽 + 清新满足呼噜声
@@ -150,9 +165,10 @@ public final class CatSoundEngine {
                 }
             }
         case .cannedFood:
-            // 马口铁猫罐头：金属撬盖“叮”声 + 大快朵颐吧唧嘴
-            playSystemSample(named: "Glass", rate: 1.75, volume: vol * 0.65)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            // 马口铁猫罐头：金属拉环掀盖清脆“叮”声 + 鲜美肉酱大口咀嚼
+            playSystemSample(named: "Ping", rate: 1.45, volume: vol * 0.60)
+            playSystemSample(named: "Pop", rate: 1.10, volume: vol * 0.45)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 Task { @MainActor in
                     self.playChompAndBurp()
                 }
@@ -225,21 +241,51 @@ public final class CatSoundEngine {
                 }
             }
         case .siamese:
-            // 软糯麻薯慢吞吞地“吸溜”一下滑回桶内
-            playSystemSample(named: "Submarine", rate: 0.72, volume: vol * 0.50)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            // 软糯麻薯慢吞吞地“吸溜”一下滑回桶内（告别生硬青蛙叫，改用水灵糯滑弹性回缩）
+            playSystemSample(named: "Submarine", rate: 0.85, volume: vol * 0.45)
+            playSystemSample(named: "Bottle", rate: 0.88, volume: vol * 0.35)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 Task { @MainActor in
-                    self.playSystemSample(named: "Frog", rate: 0.86, volume: vol * 0.42)
+                    self.playSystemSample(named: "Bottle", rate: 1.15, volume: vol * 0.38)
+                    self.playSystemSample(named: "Pop", rate: 0.90, volume: vol * 0.30)
                 }
             }
         case .blackShadow:
-            // 吸墨器/黑洞无声收缩 + 轻微风声与水墨滴落声
-            playSystemSample(named: "Blow", rate: 1.75, volume: vol * 0.32)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) {
+            // 烟雾流体消散幽风与水墨轻柔归位（悠扬舒缓气流，彻底告别硬质回抽感）
+            playSystemSample(named: "Blow", rate: 0.95, volume: vol * 0.28)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
                 Task { @MainActor in
-                    self.playSystemSample(named: "Bottle", rate: 1.60, volume: vol * 0.28)
+                    self.playSystemSample(named: "Bottle", rate: 1.25, volume: vol * 0.18)
                 }
             }
+        }
+    }
+
+    // MARK: - 7. 垃圾桶物理闭合/底盘沉降微音效 (Bin Physical Closure)
+    public func playBinLidClose(bin: TrashBinStyle) {
+        let prefs = CatPreferences.shared
+        guard prefs.soundVolume > 0.01 else { return }
+        let vol = Float(prefs.soundVolume)
+
+        switch bin {
+        case .greenWheelieBin:
+            // 绿色市政塑料盖自然回落：“嗒哒”一声轻巧塑料闭合
+            playSystemSample(named: "Bottle", rate: 0.72, volume: vol * 0.32)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                Task { @MainActor in
+                    self.playSystemSample(named: "Pop", rate: 0.95, volume: vol * 0.28)
+                }
+            }
+        case .streetMetalBox:
+            // 街头深咖金属箱：沉稳扎实的金属箱体微降共鸣
+            playSystemSample(named: "Basso", rate: 1.65, volume: vol * 0.28)
+            playSystemSample(named: "Tink", rate: 0.62, volume: vol * 0.22)
+        case .macOSFrosted:
+            // 现代极简雾面磨砂垃圾桶：极其温润轻巧的触碰归位
+            playSystemSample(named: "Bottle", rate: 1.45, volume: vol * 0.26)
+        case .metalMesh:
+            // 经典金属网格镂空垃圾桶：清爽利落的微弱钢丝弹跳微响
+            playSystemSample(named: "Tink", rate: 1.35, volume: vol * 0.28)
         }
     }
 

@@ -430,17 +430,21 @@ struct MetalMeshBackWallView: View {
 
 /// 样式 C：3D 圆柱透视高光金属网格桶 · 前景
 struct MetalMeshFrontWallView: View {
+    @ObservedObject var lighting = EnvironmentLightingManager.shared
+
     var body: some View {
+        let nightK = lighting.nightFactor
+
         ZStack {
             CylindricalFrustumShellShape(isFrontHalf: true)
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.black.opacity(0.32), location: 0.0),
-                            .init(color: Color.white.opacity(0.22), location: 0.25),
-                            .init(color: Color(white: 0.75).opacity(0.06), location: 0.56),
-                            .init(color: Color.white.opacity(0.14), location: 0.80),
-                            .init(color: Color.black.opacity(0.38), location: 1.0)
+                            .init(color: Color.black.opacity(0.32 + 0.18 * nightK), location: 0.0),
+                            .init(color: Color.white.opacity(0.22 * (1.0 - nightK * 0.4)), location: 0.25),
+                            .init(color: Color(white: 0.75 - 0.25 * nightK).opacity(0.06), location: 0.56),
+                            .init(color: Color.white.opacity(0.14 * (1.0 - nightK * 0.4)), location: 0.80),
+                            .init(color: Color.black.opacity(0.38 + 0.16 * nightK), location: 1.0)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing

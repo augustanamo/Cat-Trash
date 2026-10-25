@@ -51,8 +51,63 @@ struct StreetBoxPoppedCatClipShape: Shape {
     }
 }
 
+/// 街头果皮箱专属：夜晚小夜灯前景漫射光效
+struct StreetBoxNightAmbientView: View {
+    @ObservedObject var lighting = EnvironmentLightingManager.shared
+
+    var body: some View {
+        Canvas { context, size in
+            let cx = size.width * 0.5
+            let topY: CGFloat = 10.0 // 对应顶棚下沿
+            let nightK = lighting.nightFactor
+            let breathe = sin(lighting.lampBreathingPhase)
+            let lampAlpha = (0.50 + 0.10 * breathe) * nightK
+
+            // 顶棚正中央精致小夜灯的微型发光点
+            var lampLine = Path()
+            lampLine.move(to: CGPoint(x: cx - 4.5, y: topY))
+            lampLine.addLine(to: CGPoint(x: cx + 4.5, y: topY))
+            context.stroke(
+                lampLine,
+                with: .linearGradient(
+                    Gradient(colors: [
+                        Color.clear,
+                        Color(red: 1.0, green: 0.96, blue: 0.80).opacity(0.95 * lampAlpha),
+                        Color(red: 1.0, green: 0.92, blue: 0.65).opacity(0.95 * lampAlpha),
+                        Color.clear
+                    ]),
+                    startPoint: CGPoint(x: cx - 4.5, y: topY),
+                    endPoint: CGPoint(x: cx + 4.5, y: topY)
+                ),
+                style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
+            )
+
+            // 向下照射的小巧柔和微束光晕（小聚光射灯质感，精致不喧宾夺主）
+            let glowRect = CGRect(x: cx - 13.0, y: topY - 2.0, width: 26.0, height: 20.0)
+            context.fill(
+                Path(ellipseIn: glowRect),
+                with: .radialGradient(
+                    Gradient(colors: [
+                        Color(red: 1.0, green: 0.88, blue: 0.55).opacity(0.35 * lampAlpha),
+                        Color(red: 0.96, green: 0.75, blue: 0.35).opacity(0.12 * lampAlpha),
+                        Color.clear
+                    ]),
+                    center: CGPoint(x: cx, y: topY + 2.0),
+                    startRadius: 1,
+                    endRadius: 13.0
+                )
+            )
+        }
+        .frame(width: 82, height: 124)
+        .offset(y: 8)
+        .allowsHitTesting(false)
+    }
+}
+
 /// 样式 B：街头立式深咖烤漆金属果皮箱 · 后壁
 struct StreetMetalBoxBackWallView: View {
+    @ObservedObject var lighting = EnvironmentLightingManager.shared
+
     var body: some View {
         ZStack {
             // 1. 地面矩形落地阴影（加长后下移至接地底部）
@@ -79,36 +134,75 @@ struct StreetMetalBoxBackWallView: View {
                 let doorBotY: CGFloat = 108.0 // 对应加长后的前门板下沿 (bucketLocalCenter.y + 54)
                 let baseBotY: CGFloat = 120.0 // 对应底部镂空底座底边 (bucketLocalCenter.y + 66)
 
-                // A. 整体深炭褐金属箱体背板
+                let nightK = lighting.nightFactor
+                let breathe = sin(lighting.lampBreathingPhase)
+
+                // A. 整体深炭褐金属箱体背板（入夜后略微压暗加深）
                 let fullRect = CGRect(x: leftX, y: topY, width: boxW, height: baseBotY - topY)
+                let backColor1 = Color(red: 0.14 - 0.05 * nightK, green: 0.11 - 0.04 * nightK, blue: 0.10 - 0.03 * nightK)
+                let backColor2 = Color(red: 0.24 - 0.08 * nightK, green: 0.19 - 0.06 * nightK, blue: 0.16 - 0.05 * nightK)
+                let backColor3 = Color(red: 0.34 - 0.10 * nightK, green: 0.26 - 0.08 * nightK, blue: 0.21 - 0.07 * nightK)
+                let backColor4 = Color(red: 0.16 - 0.06 * nightK, green: 0.13 - 0.05 * nightK, blue: 0.11 - 0.04 * nightK)
+
                 context.fill(
                     Path(fullRect),
                     with: .linearGradient(
                         Gradient(stops: [
-                            .init(color: Color(red: 0.14, green: 0.11, blue: 0.10), location: 0.0),
-                            .init(color: Color(red: 0.24, green: 0.19, blue: 0.16), location: 0.55),
-                            .init(color: Color(red: 0.34, green: 0.26, blue: 0.21), location: 0.92),
-                            .init(color: Color(red: 0.16, green: 0.13, blue: 0.11), location: 1.0)
+                            .init(color: backColor1, location: 0.0),
+                            .init(color: backColor2, location: 0.55),
+                            .init(color: backColor3, location: 0.92),
+                            .init(color: backColor4, location: 1.0)
                         ]),
                         startPoint: CGPoint(x: leftX, y: topY),
                         endPoint: CGPoint(x: rightX, y: topY + 24)
                     )
                 )
 
-                // B. 上方投物口内腔右侧暖琥珀环境反光
+                // B. 上方投物口内腔反光：白天为暖琥珀自然漫反射，夜晚转为景观小夜灯温润鹅黄色向下倾泻光晕
                 let recessRect = CGRect(x: leftX + 2.5, y: topY + 2.5, width: boxW - 5.0, height: doorTopY - topY + 4.0)
+                let recessCenter = CGPoint(x: rightX - 14, y: topY + 15)
                 context.fill(
                     Path(recessRect),
                     with: .radialGradient(
                         Gradient(colors: [
-                            Color(red: 0.44, green: 0.31, blue: 0.22).opacity(0.65),
+                            Color(red: 0.44, green: 0.31, blue: 0.22).opacity(0.65 * (1.0 - nightK * 0.5)),
                             Color(red: 0.15, green: 0.12, blue: 0.10).opacity(0.92)
                         ]),
-                        center: CGPoint(x: rightX - 14, y: topY + 15),
+                        center: recessCenter,
                         startRadius: 2,
                         endRadius: 42
                     )
                 )
+
+                // 顶棚正中央的小夜灯物理微型灯座与聚光投射
+                let fixtureRect = CGRect(x: cx - 4.5, y: topY + 0.6, width: 9.0, height: 2.0)
+                context.fill(Path(roundedRect: fixtureRect, cornerRadius: 0.6), with: .color(Color(red: 0.12, green: 0.10, blue: 0.09)))
+
+                // 夜间景观小夜灯：小巧微束筒灯聚光与暖光灯珠
+                if nightK > 0.05 {
+                    let lampIntensity = (0.75 + 0.12 * breathe) * nightK
+                    let lampGlowRect = CGRect(x: cx - 12.0, y: topY + 1.2, width: 24.0, height: 18.0)
+                    context.fill(
+                        Path(ellipseIn: lampGlowRect),
+                        with: .radialGradient(
+                            Gradient(colors: [
+                                Color(red: 1.0, green: 0.90, blue: 0.60).opacity(0.65 * lampIntensity),
+                                Color(red: 0.96, green: 0.72, blue: 0.32).opacity(0.28 * lampIntensity),
+                                Color.clear
+                            ]),
+                            center: CGPoint(x: cx, y: topY + 2.5),
+                            startRadius: 1,
+                            endRadius: 12.0
+                        )
+                    )
+
+                    // 微型发光灯芯亮珠
+                    let bulbRect = CGRect(x: cx - 2.2, y: topY + 0.8, width: 4.4, height: 1.4)
+                    context.fill(
+                        Path(roundedRect: bulbRect, cornerRadius: 0.6),
+                        with: .color(Color(red: 1.0, green: 0.96, blue: 0.82).opacity(0.95 * lampIntensity))
+                    )
+                }
 
                 // C. 投物口左右两侧内壁立体斜切折面
                 var leftInnerWall = Path()
@@ -125,7 +219,10 @@ struct StreetMetalBoxBackWallView: View {
                 rightInnerWall.addLine(to: CGPoint(x: rightX - 5.5, y: doorTopY + 2.0))
                 rightInnerWall.addLine(to: CGPoint(x: rightX, y: doorTopY + 2.0))
                 rightInnerWall.closeSubpath()
-                context.fill(rightInnerWall, with: .color(Color(red: 0.28, green: 0.21, blue: 0.17)))
+                let rightWallColor = (nightK > 0.05)
+                    ? Color(red: 0.28 + 0.12 * nightK, green: 0.21 + 0.08 * nightK, blue: 0.17)
+                    : Color(red: 0.28, green: 0.21, blue: 0.17)
+                context.fill(rightInnerWall, with: .color(rightWallColor))
 
                 // D. 底部镂空金属底座与内胆底板
                 // (1) 内胆结实底部承重面板（底部面板，封闭内胆，阻止垃圾与猫猫下落）
@@ -165,6 +262,8 @@ struct StreetMetalBoxBackWallView: View {
 
 /// 样式 B：街头立式深咖烤漆金属果皮箱 · 前景
 struct StreetMetalBoxFrontWallView: View {
+    @ObservedObject var lighting = EnvironmentLightingManager.shared
+
     var body: some View {
         Canvas { context, size in
             let cx = size.width * 0.5
@@ -176,27 +275,34 @@ struct StreetMetalBoxFrontWallView: View {
             let doorBotY: CGFloat = 108.0 // 加长后的前门板下沿 (bucketLocalCenter.y + 54)
             let baseBotY: CGFloat = 120.0 // 底部底座下沿 (bucketLocalCenter.y + 66)
 
-            // 1. 深咖色哑光烤漆金属加长前门板主体
+            let nightK = lighting.nightFactor
+            let breathe = sin(lighting.lampBreathingPhase)
+
+            // 1. 深咖色哑光烤漆金属加长前门板主体（夜间自然转为静谧沉稳深色）
             let doorRect = CGRect(x: leftX + 2.2, y: doorTopY, width: boxW - 4.4, height: doorBotY - doorTopY)
+            let doorColor1 = Color(red: 0.43 - 0.12 * nightK, green: 0.34 - 0.10 * nightK, blue: 0.29 - 0.08 * nightK)
+            let doorColor2 = Color(red: 0.36 - 0.10 * nightK, green: 0.28 - 0.08 * nightK, blue: 0.24 - 0.06 * nightK)
+            let doorColor3 = Color(red: 0.28 - 0.08 * nightK, green: 0.22 - 0.06 * nightK, blue: 0.18 - 0.04 * nightK)
+
             context.fill(
                 Path(roundedRect: doorRect, cornerRadius: 1.2),
                 with: .linearGradient(
                     Gradient(stops: [
-                        .init(color: Color(red: 0.43, green: 0.34, blue: 0.29), location: 0.0),
-                        .init(color: Color(red: 0.36, green: 0.28, blue: 0.24), location: 0.45),
-                        .init(color: Color(red: 0.28, green: 0.22, blue: 0.18), location: 1.0)
+                        .init(color: doorColor1, location: 0.0),
+                        .init(color: doorColor2, location: 0.45),
+                        .init(color: doorColor3, location: 1.0)
                     ]),
                     startPoint: CGPoint(x: doorRect.minX, y: doorRect.minY),
                     endPoint: CGPoint(x: doorRect.maxX, y: doorRect.maxY)
                 )
             )
 
-            // 门板表面柔和金属漫反射光斑
+            // 门板表面柔和金属漫反射光斑（夜晚收敛为微弱冷夜光）
             context.fill(
                 Path(roundedRect: doorRect, cornerRadius: 1.2),
                 with: .radialGradient(
                     Gradient(colors: [
-                        Color(red: 0.55, green: 0.44, blue: 0.37).opacity(0.32),
+                        Color(red: 0.55, green: 0.44, blue: 0.37).opacity(0.32 * (1.0 - nightK * 0.7)),
                         Color.clear
                     ]),
                     center: CGPoint(x: doorRect.minX + 18, y: doorRect.minY + 24),
@@ -204,6 +310,25 @@ struct StreetMetalBoxFrontWallView: View {
                     endRadius: 52
                 )
             )
+
+            // 夜晚微型小夜灯在前门板正上方投下的收敛暖光晕
+            if nightK > 0.05 {
+                let glowIntensity = (0.50 + 0.10 * breathe) * nightK
+                let doorGlowRect = CGRect(x: cx - 12.0, y: doorTopY, width: 24.0, height: 12.0)
+                context.fill(
+                    Path(ellipseIn: doorGlowRect),
+                    with: .radialGradient(
+                        Gradient(colors: [
+                            Color(red: 1.0, green: 0.88, blue: 0.55).opacity(0.30 * glowIntensity),
+                            Color(red: 0.96, green: 0.72, blue: 0.32).opacity(0.08 * glowIntensity),
+                            Color.clear
+                        ]),
+                        center: CGPoint(x: cx, y: doorTopY + 1.0),
+                        startRadius: 1,
+                        endRadius: 12.0
+                    )
+                )
+            }
 
             // 门板中段横向隐式折弯加强筋
             let midRibY = doorTopY + (doorBotY - doorTopY) * 0.55
@@ -214,7 +339,7 @@ struct StreetMetalBoxFrontWallView: View {
             var midRibHighlight = Path()
             midRibHighlight.move(to: CGPoint(x: doorRect.minX + 1.0, y: midRibY + 0.8))
             midRibHighlight.addLine(to: CGPoint(x: doorRect.maxX - 1.0, y: midRibY + 0.8))
-            context.stroke(midRibHighlight, with: .color(Color.white.opacity(0.18)), lineWidth: 0.6)
+            context.stroke(midRibHighlight, with: .color(Color.white.opacity(0.18 * (1.0 - nightK * 0.4))), lineWidth: 0.6)
 
             // 2. 前门板顶部正中央的微型银色圆锁孔
             let lockCenter = CGPoint(x: cx, y: doorTopY + 4.6)
@@ -222,7 +347,7 @@ struct StreetMetalBoxFrontWallView: View {
             context.fill(
                 Path(ellipseIn: lockOuter),
                 with: .linearGradient(
-                    Gradient(colors: [Color(white: 0.92), Color(white: 0.50)]),
+                    Gradient(colors: [Color(white: 0.92 - 0.20 * nightK), Color(white: 0.50 - 0.15 * nightK)]),
                     startPoint: CGPoint(x: lockOuter.minX, y: lockOuter.minY),
                     endPoint: CGPoint(x: lockOuter.maxX, y: lockOuter.maxY)
                 )
@@ -230,18 +355,25 @@ struct StreetMetalBoxFrontWallView: View {
             let keyhole = CGRect(x: lockCenter.x - 0.55, y: lockCenter.y - 1.0, width: 1.1, height: 2.0)
             context.fill(Path(roundedRect: keyhole, cornerRadius: 0.4), with: .color(.black.opacity(0.85)))
 
-            // 门板上沿折弯金属高光棱线
+            // 门板上沿折弯金属高光棱线（夜晚被小夜灯照亮呈琥珀暖金微光）
             var doorTopHighlight = Path()
             doorTopHighlight.move(to: CGPoint(x: doorRect.minX + 0.5, y: doorTopY + 0.6))
             doorTopHighlight.addLine(to: CGPoint(x: doorRect.maxX - 0.5, y: doorTopY + 0.6))
+            let highlightColors: [Color] = (nightK > 0.05)
+                ? [
+                    Color(white: 0.55).opacity(0.45),
+                    Color(red: 1.0, green: 0.90, blue: 0.65).opacity(0.75),
+                    Color(white: 0.55).opacity(0.45)
+                  ]
+                : [
+                    Color(white: 0.78).opacity(0.55),
+                    Color(white: 0.92).opacity(0.75),
+                    Color(white: 0.65).opacity(0.45)
+                  ]
             context.stroke(
                 doorTopHighlight,
                 with: .linearGradient(
-                    Gradient(colors: [
-                        Color(white: 0.78).opacity(0.55),
-                        Color(white: 0.92).opacity(0.75),
-                        Color(white: 0.65).opacity(0.45)
-                    ]),
+                    Gradient(colors: highlightColors),
                     startPoint: CGPoint(x: doorRect.minX, y: doorTopY),
                     endPoint: CGPoint(x: doorRect.maxX, y: doorTopY)
                 ),

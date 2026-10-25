@@ -612,14 +612,24 @@ struct CatHeadView: View {
     private func eyeView(gazeOffset: CGVector) -> some View {
         switch morph {
         case .blackShadow:
-            // 黑猫专属：在黑暗中浮动的明亮金黄色发光圆眼
+            // 黑猫专属：在黑暗中浮动的明亮金黄色发光圆眼（入夜后亮度和光晕自动增强）
+            let nightK = EnvironmentLightingManager.shared.nightFactor
+            let eyeGlowRadius: CGFloat = 3.0 + 3.0 * nightK
+
             ZStack {
+                if nightK > 0.1 {
+                    Circle()
+                        .fill(Color(red: 1.0, green: 0.88, blue: 0.20).opacity(0.40 * nightK))
+                        .frame(width: 13.0, height: 13.0)
+                        .blur(radius: 2.0)
+                }
+
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(red: 1.0, green: 0.92, blue: 0.28),
-                                Color(red: 0.96, green: 0.68, blue: 0.06)
+                                Color(red: 1.0, green: 0.92 + 0.08 * nightK, blue: 0.28 + 0.15 * nightK),
+                                Color(red: 0.96, green: 0.68 + 0.10 * nightK, blue: 0.06)
                             ],
                             center: .center,
                             startRadius: 1,
@@ -627,7 +637,7 @@ struct CatHeadView: View {
                         )
                     )
                     .frame(width: 9.5, height: 9.5)
-                    .shadow(color: Color.yellow.opacity(0.65), radius: 3)
+                    .shadow(color: Color.yellow.opacity(0.65 + 0.35 * nightK), radius: eyeGlowRadius)
 
                 // 竖瞳与高光
                 Ellipse()
@@ -814,13 +824,25 @@ struct ShadowSmokeHeadView: View {
     }
 
     private var shadowGoldenEye: some View {
-        ZStack {
+        let nightK = EnvironmentLightingManager.shared.nightFactor
+        let glowRadius: CGFloat = 4.0 + 3.5 * nightK
+        let extraGlowOpacity = 0.45 * nightK
+
+        return ZStack {
+            // 夜晚在眼周外圈溢出的神秘金色光晕
+            if nightK > 0.1 {
+                Circle()
+                    .fill(Color(red: 1.0, green: 0.90, blue: 0.20).opacity(extraGlowOpacity))
+                    .frame(width: 13.5, height: 13.5)
+                    .blur(radius: 2.2)
+            }
+
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(red: 1.0, green: 0.94, blue: 0.32),
-                            Color(red: 0.96, green: 0.66, blue: 0.04)
+                            Color(red: 1.0, green: 0.95 + 0.05 * nightK, blue: 0.32 + 0.15 * nightK),
+                            Color(red: 0.96, green: 0.66 + 0.10 * nightK, blue: 0.04)
                         ],
                         center: .center,
                         startRadius: 1,
@@ -828,7 +850,7 @@ struct ShadowSmokeHeadView: View {
                     )
                 )
                 .frame(width: 9.8, height: 9.8)
-                .shadow(color: Color.yellow.opacity(0.85), radius: 4)
+                .shadow(color: Color.yellow.opacity(0.85 + 0.15 * nightK), radius: glowRadius)
 
             Ellipse()
                 .fill(Color.black)
