@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+CatTrash.app/
+*.o
+*.dSYM
+.DS_Store
+DerivedData/
