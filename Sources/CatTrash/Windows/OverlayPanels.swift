@@ -87,17 +87,17 @@ public final class CatOverlayWindowController: NSObject {
             let s = max(physics.scale, 0.85)
             let dx = mouse.x - bucket.x
             let dy = mouse.y - bucket.y
-            let isGreen = CatPreferences.shared.selectedBinStyle == .greenWheelieBin
+            let style = CatPreferences.shared.selectedBinStyle
+            let sideClearance = style.sideClearance * s
+            let topY = -style.topSliderOffsetY * s
 
-            let inTopSlider = abs(dx) <= 95 * s && dy >= (isGreen ? 66 : 56) * s && dy <= (isGreen ? 98 : 88) * s
-            let inRightBins = dx >= 30 * s && dx <= 66 * s && abs(dy) <= 72 * s
-            let inLeftControls = dx >= -66 * s && dx <= -30 * s && abs(dy) <= 36 * s
-            let nearBucket = hypot(dx, dy) < (isGreen ? 135 : 105) * s
+            let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
+            let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
+            let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
+            let nearBucket = hypot(dx, dy) < (style == .greenWheelieBin ? 145 : 105) * s
 
             if !inTopSlider && !inRightBins && !inLeftControls && !nearBucket {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                    physics.isFloatingMenuVisible = false
-                }
+                physics.isFloatingMenuVisible = false
             }
         }
 
@@ -127,18 +127,20 @@ public final class CatOverlayWindowController: NSObject {
         // 给桶和猫头留出充足的接收范围，同时包含桌面虚拟测试废纸团的点击/悬停
         let dx = mouse.x - bucket.x
         let dy = mouse.y - bucket.y
-        let isGreen = CatPreferences.shared.selectedBinStyle == .greenWheelieBin
+        let style = CatPreferences.shared.selectedBinStyle
+        let sideClearance = style.sideClearance * s
+        let topY = -style.topSliderOffsetY * s
 
         var nearFloatingControls = false
         if physics.isFloatingMenuVisible {
-            let inTopSlider = abs(dx) <= 95 * s && dy >= (isGreen ? 66 : 56) * s && dy <= (isGreen ? 98 : 88) * s
-            let inRightBins = dx >= 30 * s && dx <= 66 * s && abs(dy) <= 72 * s
-            let inLeftControls = dx >= -66 * s && dx <= -30 * s && abs(dy) <= 36 * s
+            let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
+            let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
+            let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
 
             nearFloatingControls = inTopSlider || inRightBins || inLeftControls
         }
 
-        let nearBucket = hypot(dx, dy) < (isGreen ? 135 : 105) * s
+        let nearBucket = hypot(dx, dy) < (style == .greenWheelieBin ? 145 : 105) * s
         let nearHead = hypot(mouse.x - head.x, mouse.y - head.y) < 72 * s
 
         panel.ignoresMouseEvents = !(nearBucket || nearHead || nearFloatingControls)
@@ -176,15 +178,17 @@ final class CatDropAndHitTestView: NSView {
         let bucketPt = physics.bucketScreenCenter
         let s = max(physics.scale, 0.85)
 
-        let isGreen = CatPreferences.shared.selectedBinStyle == .greenWheelieBin
         let dx = screenPt.x - bucketPt.x
         let dy = screenPt.y - bucketPt.y
+        let style = CatPreferences.shared.selectedBinStyle
+        let sideClearance = style.sideClearance * s
+        let topY = -style.topSliderOffsetY * s
 
         // 如果周围悬浮按钮处于打开状态，点击命中三大群组时派发给 SwiftUI 宿主视图
         if physics.isFloatingMenuVisible {
-            let inTopSlider = abs(dx) <= 95 * s && dy >= (isGreen ? 66 : 56) * s && dy <= (isGreen ? 98 : 88) * s
-            let inRightBins = dx >= 30 * s && dx <= 66 * s && abs(dy) <= 72 * s
-            let inLeftControls = dx >= -66 * s && dx <= -30 * s && abs(dy) <= 36 * s
+            let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
+            let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
+            let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
 
             if inTopSlider || inRightBins || inLeftControls {
                 if let hosting = subviews.first {
@@ -193,7 +197,7 @@ final class CatDropAndHitTestView: NSView {
             }
         }
 
-        let nearBucket = hypot(dx, dy) < (isGreen ? 140 : 105) * s
+        let nearBucket = hypot(dx, dy) < (style == .greenWheelieBin ? 145 : 105) * s
         let nearHead = hypot(screenPt.x - headPt.x, screenPt.y - headPt.y) < 72 * s
 
         if nearBucket || nearHead {
@@ -209,9 +213,7 @@ final class CatDropAndHitTestView: NSView {
     override func rightMouseDown(with event: NSEvent) {
         CatSoundEngine.shared.playPurr()
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-            CatPhysicsEngine.shared.isFloatingMenuVisible.toggle()
-        }
+        CatPhysicsEngine.shared.isFloatingMenuVisible.toggle()
     }
 
     // MARK: - 模式 A：按下并向外拖拽猫头（支持按住 Option 点化零食） / 拖动桶身位置
@@ -227,9 +229,7 @@ final class CatDropAndHitTestView: NSView {
 
         // 如果悬浮菜单处于显示状态，点击猫头或桶身时自然收起
         if physics.isFloatingMenuVisible {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                physics.isFloatingMenuVisible = false
-            }
+            physics.isFloatingMenuVisible = false
         }
 
         if isCommandPressed || (CatPreferences.shared.placementMode == .freeFloating && isBottomBucketClick) {

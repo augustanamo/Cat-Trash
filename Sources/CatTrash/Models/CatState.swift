@@ -232,6 +232,34 @@ public enum TrashBinStyle: String, CaseIterable, Identifiable, Codable {
         case .metalMesh: return "trash.circle"
         }
     }
+
+    /// 悬浮控制按钮相对桶心的水平间距（自适应桶体宽度）
+    public var sideClearance: CGFloat {
+        switch self {
+        case .macOSFrosted:
+            return 58
+        case .metalMesh:
+            return 62
+        case .streetMetalBox:
+            return 62
+        case .greenWheelieBin:
+            return 90
+        }
+    }
+
+    /// 悬浮滑动条相对桶心的垂直高度偏移（自适应桶高与顶盖高度，向上为负）
+    public var topSliderOffsetY: CGFloat {
+        switch self {
+        case .macOSFrosted:
+            return -72
+        case .metalMesh:
+            return -72
+        case .streetMetalBox:
+            return -90
+        case .greenWheelieBin:
+            return -118
+        }
+    }
 }
 
 // MARK: - 常驻位置模式 (Placement Mode)

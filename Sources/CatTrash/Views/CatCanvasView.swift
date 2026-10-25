@@ -42,9 +42,9 @@ struct CatBodyLayerView: View {
         let dy = endPoint.y - startPoint.y
 
         if isFrontCompartmentExit {
-            let forwardDip = min(max(dy * 0.22 + 14.0, -2.0), 34.0)
-            let c1 = CGPoint(x: startPoint.x + dx * 0.26, y: startPoint.y + forwardDip)
-            let c2 = CGPoint(x: startPoint.x + dx * 0.70, y: endPoint.y + min(max(-dy * 0.14, -16.0), 24.0))
+            // 从正面暗格窗口平滑自然引出，随拉拽方向平滑延展，杜绝不自然的下垂垂坠
+            let c1 = CGPoint(x: startPoint.x + dx * 0.28, y: startPoint.y + dy * 0.30)
+            let c2 = CGPoint(x: startPoint.x + dx * 0.70, y: endPoint.y - dy * 0.10)
             return (c1, c2)
         }
 
@@ -527,10 +527,8 @@ public struct CatTrashSceneView: View {
 
                 // 3. 猫咪完整图层（位于前景桶壁后方；街头果皮箱暗格潜伏阶段受暗格顶棚裁剪）
                 if isStreetBox {
-                    if !isPoppedOutOfStreetCompartment {
-                        catAssemblyView
-                            .clipShape(StreetBoxCompartmentClipShape(bucketCenter: bucketLocalCenter))
-                    }
+                    catAssemblyView
+                        .clipShape(StreetBoxCompartmentClipShape(bucketCenter: bucketLocalCenter))
                 } else {
                     catAssemblyView
                 }
@@ -556,8 +554,10 @@ public struct CatTrashSceneView: View {
                 }
 
                 // 5. 街头果皮箱「从上方暗格向前拖出」阶段：猫猫身体与脑袋从暗格窗口向前钻出，越过前门板与外框并投下立体阴影！
+                // 严格以门板上沿为界裁切，确保下半身整洁藏在门板后方，消除下挂穿模耷拉肚皮
                 if isPoppedOutOfStreetCompartment {
                     catAssemblyView
+                        .clipShape(StreetBoxPoppedCatClipShape(bucketCenter: bucketLocalCenter))
                         .shadow(color: Color.black.opacity(0.45), radius: 5, x: 0, y: 4)
                 }
 
@@ -573,14 +573,9 @@ public struct CatTrashSceneView: View {
                 .position(pawsLocalPoint)
 
                 // 7. 右键触发：悬浮在周围的分开独立控制按钮（上方进度条 + 右侧垃圾桶icon按钮 + 左侧修改文件/退出）
-                if physics.isFloatingMenuVisible {
-                    FloatingSurroundingControlsView(
-                        bucketCenter: bucketLocalCenter,
-                        canvasSize: canvasSize,
-                        isGreenWheelie: isGreenWheelie
-                    )
-                    .transition(.scale(scale: 0.88).combined(with: .opacity))
-                }
+                FloatingSurroundingControlsView()
+                    .position(bucketLocalCenter)
+                    .allowsHitTesting(physics.isFloatingMenuVisible)
             }
             .frame(width: canvasSize.width, height: canvasSize.height)
             .scaleEffect(widgetScale, anchor: bucketAnchor)

@@ -270,13 +270,11 @@ public final class CatPhysicsEngine: ObservableObject {
             headVelocity.dy += forceY * CGFloat(dt)
 
             headDisplacement.dx += headVelocity.dx * CGFloat(dt)
-            // 街头金属果皮箱为正面暗格拉出，允许从前方任意角度回弹；普通敞口桶限制向下穿透桶底
-            if prefs.selectedBinStyle == .streetMetalBox {
-                headDisplacement.dy += headVelocity.dy * CGFloat(dt)
-            } else {
-                let minBounceY: CGFloat = min((morph == .tuxedo) ? -16.0 : -9.0, minAllowedHeadDY(forDX: headDisplacement.dx))
-                headDisplacement.dy = max(minBounceY, headDisplacement.dy + headVelocity.dy * CGFloat(dt))
-            }
+            // 物理回弹：各桶均限制不能向下穿透桶底或内胆底部面板
+            let minBounceY: CGFloat = (prefs.selectedBinStyle == .streetMetalBox)
+                ? min(0.0, minAllowedHeadDY(forDX: headDisplacement.dx))
+                : min((morph == .tuxedo) ? -16.0 : -9.0, minAllowedHeadDY(forDX: headDisplacement.dx))
+            headDisplacement.dy = max(minBounceY, headDisplacement.dy + headVelocity.dy * CGFloat(dt))
 
             if hypot(headDisplacement.dx, headDisplacement.dy) < 0.25 &&
                hypot(headVelocity.dx, headVelocity.dy) < 2.0 {
@@ -623,15 +621,30 @@ public final class CatPhysicsEngine: ObservableObject {
         nextIdleActionTime = idleActionEndTime + Double.random(in: 4.0...9.5)
     }
 
-    /// 开口在上方的桶：在桶身内部限制不能向下穿透桶底；一旦拖出至桶身外侧，完全解除限制允许自由垂挂向下拉拽
+    /// 在桶身/箱体内部限制不能向下穿透桶底或底部承重面板；一旦拖出至桶身外侧，解除限制允许向斜下方自由延展
     public func minAllowedHeadDY(forDX dx: CGFloat) -> CGFloat {
         let style = CatPreferences.shared.selectedBinStyle
-        guard style != .streetMetalBox else { return -.greatestFiniteMagnitude }
-        let halfW: CGFloat = (style == .greenWheelieBin ? 52.0 : 38.0) * scale
-        let depth: CGFloat = (fullPeekYOffset + 50.0) * scale
-        // 一旦光标横向稍微移出桶壁（abs(dx) > halfW - 6.0），迅速平滑过渡，允许完全自由向下拉拽，绝无空气墙黏滞感
-        let k = min(max((abs(dx) - (halfW - 6.0)) / (10.0 * scale), 0), 1)
-        return 6.0 - (6.0 + depth) * k
+        let halfW: CGFloat
+        let depth: CGFloat
+        switch style {
+        case .greenWheelieBin:
+            halfW = 52.0 * scale
+            depth = (fullPeekYOffset + 50.0) * scale
+            let k = min(max((abs(dx) - (halfW - 6.0)) / (10.0 * scale), 0), 1)
+            return 6.0 - (6.0 + depth) * k
+        case .macOSFrosted, .metalMesh:
+            halfW = 38.0 * scale
+            depth = (fullPeekYOffset + 50.0) * scale
+            let k = min(max((abs(dx) - (halfW - 6.0)) / (10.0 * scale), 0), 1)
+            return 6.0 - (6.0 + depth) * k
+        case .streetMetalBox:
+            // 街头果皮箱：内部有坚实封闭的内胆底板与暗格底座，猫猫只能从上方投物窗口探出，绝对不可向下拉入桶底或穿透镂空底座！
+            halfW = 42.0 * scale
+            // 在箱体内部及正下方（abs(dx) <= halfW），严禁任何向下位移 (minAllowedDY >= 0)
+            // 只有当光标横向明显拉到箱体左右外侧（abs(dx) > halfW）时，才允许猫咪身体出箱后向桌面斜下方延展
+            let k = min(max((abs(dx) - (halfW - 4.0)) / (14.0 * scale), 0), 1)
+            return 0.0 - (80.0 * scale) * k
+        }
     }
 
     // MARK: - 模式 A：用户按住猫头向外拖拽 (Rubber-Band Active Pull)
@@ -656,8 +669,7 @@ public final class CatPhysicsEngine: ObservableObject {
             y: bucketScreenCenter.y + fullPeekYOffset * scale
         )
         let rawDX = cursorScreenPoint.x - anchor.x
-        // 敞口桶限制只能从桶口向上方拉出；而街头金属果皮箱是「正面暗格窗口」，允许向正前、左右、斜下或斜上任意方向从暗格里往外拖出！
-        let rawDY = isStreetBox ? (cursorScreenPoint.y - anchor.y) : max(minAllowedHeadDY(forDX: rawDX), cursorScreenPoint.y - anchor.y)
+        let rawDY = max(minAllowedHeadDY(forDX: rawDX), cursorScreenPoint.y - anchor.y)
         let rawDist = hypot(rawDX, rawDY)
 
         guard rawDist > 0.5 else {
@@ -689,10 +701,10 @@ public final class CatPhysicsEngine: ObservableObject {
         let ux = rawDX / rawDist
         let uy = rawDY / rawDist
         if isStreetBox && arePawsClingingToRim {
-            // 街头果皮箱初段扒住门板时：猫猫还在暗格内部挣扎，限制向上位移不顶穿暗格顶棚
+            // 街头果皮箱初段扒住门板时：猫猫还在暗格内部挣扎，限制向上位移不顶穿暗格顶棚，严禁向下穿透底面板
             headDisplacement = CGVector(
                 dx: min(max(ux * dampedDist, -14.0), 14.0),
-                dy: min(max(uy * dampedDist, -8.0), 5.0)
+                dy: min(max(uy * dampedDist, 0.0), 5.0)
             )
         } else {
             headDisplacement = CGVector(dx: ux * dampedDist, dy: uy * dampedDist)

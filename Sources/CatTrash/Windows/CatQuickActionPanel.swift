@@ -209,55 +209,42 @@ struct StandaloneMorphSliderBar: View {
 
 // MARK: - 悬浮在猫桶周围的独立按钮群组（上方进度条 + 右侧垃圾桶icon按钮 + 左侧修改/退出）
 public struct FloatingSurroundingControlsView: View {
-    let bucketCenter: CGPoint
-    let canvasSize: CGSize
-    let isGreenWheelie: Bool
+    @ObservedObject var prefs = CatPreferences.shared
+    @ObservedObject var physics = CatPhysicsEngine.shared
 
-    public init(bucketCenter: CGPoint, canvasSize: CGSize, isGreenWheelie: Bool = false) {
-        self.bucketCenter = bucketCenter
-        self.canvasSize = canvasSize
-        self.isGreenWheelie = isGreenWheelie
+    public init() {}
+
+    /// 自适应间距：根据当前垃圾桶尺寸自动外展或内收
+    private var sideClearance: CGFloat {
+        prefs.selectedBinStyle.sideClearance
     }
 
-    /// 上方进度条的 Y 偏移（在猫头与桶沿正上方悬浮，充裕空隙不遮挡猫耳与主界面）
-    private var topSliderY: CGFloat {
-        bucketCenter.y - (isGreenWheelie ? 82 : 72)
-    }
-
-    private var clampedTopSliderPosition: CGPoint {
-        let halfW: CGFloat = 175 / 2
-        let targetX = min(max(bucketCenter.x, halfW + 8), canvasSize.width - halfW - 8)
-        let targetY = max(topSliderY, 16)
-        return CGPoint(x: targetX, y: targetY)
-    }
-
-    private var clampedRightPosition: CGPoint {
-        let halfW: CGFloat = 16
-        let targetX = min(bucketCenter.x + 48, canvasSize.width - halfW - 6)
-        let targetY = min(max(bucketCenter.y, 70), canvasSize.height - 70)
-        return CGPoint(x: targetX, y: targetY)
-    }
-
-    private var clampedLeftPosition: CGPoint {
-        let halfW: CGFloat = 16
-        let targetX = max(bucketCenter.x - 48, halfW + 6)
-        let targetY = min(max(bucketCenter.y, 35), canvasSize.height - 35)
-        return CGPoint(x: targetX, y: targetY)
+    /// 自适应高度：根据当前垃圾桶高度与顶盖翻折高度自动抬升
+    private var topSliderYOffset: CGFloat {
+        prefs.selectedBinStyle.topSliderOffsetY
     }
 
     public var body: some View {
         ZStack {
-            // 1. 上方悬浮进度条（纯粹的一根条，每个档位是猫猫头，左侧是当前猫猫拉伸身体）
+            // 1. 上方悬浮进度条（原地在正上方以自身中心缩放淡入，绝不从屏幕左上角飞入）
             StandaloneMorphSliderBar()
-                .position(clampedTopSliderPosition)
+                .offset(y: topSliderYOffset)
+                .scaleEffect(physics.isFloatingMenuVisible ? 1.0 : 0.76, anchor: .center)
+                .opacity(physics.isFloatingMenuVisible ? 1.0 : 0.0)
 
-            // 2. 右侧悬浮垃圾桶 icon 按钮（单列纵向排布，不挤占横向空间，可扩展任意多款皮肤）
+            // 2. 右侧悬浮垃圾桶 icon 按钮（原地在右侧以自身中心缩放淡入）
             StandaloneTrashBinsColumn()
-                .position(clampedRightPosition)
+                .offset(x: sideClearance)
+                .scaleEffect(physics.isFloatingMenuVisible ? 1.0 : 0.76, anchor: .center)
+                .opacity(physics.isFloatingMenuVisible ? 1.0 : 0.0)
 
-            // 3. 左侧悬浮：修改文件按钮（反选是恢复）+ 退出按钮（纯 icon，无文字）
+            // 3. 左侧悬浮：修改文件按钮 + 退出按钮（原地在左侧以自身中心缩放淡入）
             StandaloneLeftControls()
-                .position(clampedLeftPosition)
+                .offset(x: -sideClearance)
+                .scaleEffect(physics.isFloatingMenuVisible ? 1.0 : 0.76, anchor: .center)
+                .opacity(physics.isFloatingMenuVisible ? 1.0 : 0.0)
         }
+        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: physics.isFloatingMenuVisible)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: prefs.selectedBinStyle)
     }
 }

@@ -2,18 +2,52 @@ import SwiftUI
 
 // MARK: - 样式 B：街头立式深咖烤漆金属果皮箱（修长立式箱体 + 上方正面暗格投物口 + 底部镂空底座）
 
-/// 街头金属果皮箱专属：当猫猫缩在暗格内（尚未被拽出暗格窗口）时的暗格内部裁剪蒙版，防止耳朵穿出顶棚或两侧铁板
+/// 街头金属果皮箱专属：当猫猫缩在暗格内（尚未被拽出暗格窗口）时的暗格内部裁剪蒙版，防止耳朵穿出顶棚或两侧铁板，且严格封闭在底部承重面板之上
 struct StreetBoxCompartmentClipShape: Shape {
     let bucketCenter: CGPoint
 
     func path(in rect: CGRect) -> Path {
+        let doorBotY = bucketCenter.y + 53.5
+        let topY = bucketCenter.y - 55.5
         let boxInnerRect = CGRect(
             x: bucketCenter.x - 34.5,
-            y: bucketCenter.y - 55.5,
+            y: topY,
             width: 69.0,
-            height: 124.0
+            height: max(doorBotY - topY, 0)
         )
         return Path(boxInnerRect)
+    }
+}
+
+/// 街头金属果皮箱专属：钻出正面窗口阶段的前景裁剪。
+/// 仅裁切箱体正面门板矩形区域（防止门板区域内部穿模），箱体两侧及外部所有空间均完全放开，绝不切断外部延展的猫咪身体与头部！
+struct StreetBoxPoppedCatClipShape: Shape {
+    let bucketCenter: CGPoint
+
+    func path(in rect: CGRect) -> Path {
+        let boxLeft = bucketCenter.x - 37.0
+        let boxRight = bucketCenter.x + 37.0
+        let doorTopY = bucketCenter.y - 25.5
+        let doorBotY = bucketCenter.y + 66.0
+
+        var path = Path()
+        // 1. 顶部整个水平区域 (y <= doorTopY)，包括箱子上方投物口与全屏上方桌面
+        path.addRect(CGRect(x: 0, y: 0, width: rect.width, height: max(doorTopY, 0)))
+
+        // 2. 箱体左侧整个外部桌面空间 (x < boxLeft)，完全放开，确保向左拉伸时猫头与身体完整无缺
+        if boxLeft > 0 {
+            path.addRect(CGRect(x: 0, y: doorTopY, width: max(boxLeft, 0), height: max(rect.height - doorTopY, 0)))
+        }
+
+        // 3. 箱体右侧整个外部桌面空间 (x > boxRight)，完全放开，确保向右拉伸时猫头与身体完整无缺
+        if boxRight < rect.width {
+            path.addRect(CGRect(x: boxRight, y: doorTopY, width: max(rect.width - boxRight, 0), height: max(rect.height - doorTopY, 0)))
+        }
+
+        // 4. 箱体正下方地面区域 (y > doorBotY)
+        path.addRect(CGRect(x: boxLeft, y: doorBotY, width: max(boxRight - boxLeft, 0), height: max(rect.height - doorBotY, 0)))
+
+        return path
     }
 }
 
@@ -93,15 +127,30 @@ struct StreetMetalBoxBackWallView: View {
                 rightInnerWall.closeSubpath()
                 context.fill(rightInnerWall, with: .color(Color(red: 0.28, green: 0.21, blue: 0.17)))
 
-                // D. 底部镂空金属底座内腔
+                // D. 底部镂空金属底座与内胆底板
+                // (1) 内胆结实底部承重面板（底部面板，封闭内胆，阻止垃圾与猫猫下落）
+                let shelfRect = CGRect(x: leftX + 2.5, y: doorBotY - 4.0, width: boxW - 5.0, height: 4.5)
+                context.fill(
+                    Path(shelfRect),
+                    with: .linearGradient(
+                        Gradient(colors: [
+                            Color(red: 0.18, green: 0.15, blue: 0.13),
+                            Color(red: 0.10, green: 0.08, blue: 0.07)
+                        ]),
+                        startPoint: CGPoint(x: leftX, y: doorBotY - 4.0),
+                        endPoint: CGPoint(x: leftX, y: doorBotY + 0.5)
+                    )
+                )
+
+                // (2) 底部镂空底座内腔背影（脚架之间的通透阴影）
                 let baseInnerRect = CGRect(x: leftX + 3.0, y: doorBotY + 1.5, width: boxW - 6.0, height: baseBotY - doorBotY - 3.0)
                 context.fill(
                     Path(baseInnerRect),
                     with: .linearGradient(
                         Gradient(colors: [
-                            Color(red: 0.09, green: 0.08, blue: 0.07),
-                            Color(red: 0.26, green: 0.19, blue: 0.15),
-                            Color(red: 0.12, green: 0.10, blue: 0.09)
+                            Color(red: 0.07, green: 0.06, blue: 0.05),
+                            Color(red: 0.14, green: 0.11, blue: 0.09),
+                            Color(red: 0.08, green: 0.07, blue: 0.06)
                         ]),
                         startPoint: CGPoint(x: leftX, y: doorBotY),
                         endPoint: CGPoint(x: rightX, y: baseBotY)
@@ -199,9 +248,26 @@ struct StreetMetalBoxFrontWallView: View {
                 style: StrokeStyle(lineWidth: 0.9)
             )
 
-            // 门板下沿内卷阴影与横缝
+            // 门板下沿内卷阴影与底部门板横梁（实心底部面板封边，明确区分上方内胆与下方镂空底座）
             let bottomSlotRect = CGRect(x: doorRect.minX, y: doorBotY - 1.8, width: doorRect.width, height: 2.2)
             context.fill(Path(bottomSlotRect), with: .color(Color.black.opacity(0.75)))
+
+            let bottomShelfBeam = CGRect(x: leftX + 1.2, y: doorBotY - 2.5, width: boxW - 2.4, height: 3.5)
+            context.fill(
+                Path(bottomShelfBeam),
+                with: .linearGradient(
+                    Gradient(colors: [
+                        Color(red: 0.20, green: 0.16, blue: 0.13),
+                        Color(red: 0.12, green: 0.09, blue: 0.08)
+                    ]),
+                    startPoint: CGPoint(x: leftX, y: doorBotY - 2.5),
+                    endPoint: CGPoint(x: leftX, y: doorBotY + 1.0)
+                )
+            )
+            var shelfHighlight = Path()
+            shelfHighlight.move(to: CGPoint(x: leftX + 1.5, y: doorBotY - 2.5))
+            shelfHighlight.addLine(to: CGPoint(x: rightX - 1.5, y: doorBotY - 2.5))
+            context.stroke(shelfHighlight, with: .color(Color.white.opacity(0.12)), lineWidth: 0.6)
 
             // 3. 右上角激光镂空「扔垃圾小人」标志
             let iconColor = Color(red: 0.11, green: 0.08, blue: 0.07)

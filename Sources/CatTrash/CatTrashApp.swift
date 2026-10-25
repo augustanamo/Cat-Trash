@@ -18,6 +18,8 @@ final class CatTrashAppDelegate: NSObject, NSApplicationDelegate {
     public static weak var shared: CatTrashAppDelegate?
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSPanel?
+    private var globalEventMonitor: Any?
+    private var localEventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
@@ -27,6 +29,7 @@ final class CatTrashAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        stopOutsideClickMonitor()
         // 应用退出即自动还原桌面所有自定义零食图标，确保桌面整洁受控
         SnackIconManager.shared.resetAllDesktopIcons()
     }
@@ -42,20 +45,19 @@ final class CatTrashAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 使用独立毛玻璃悬浮窗代替容易被全屏层挤出屏幕顶部的 NSPopover，确保位置 100% 居中于菜单栏图标正下方
+    /// 使用固定位置的毛玻璃 HUD 菜单栏面板，左右键点击统一呼出，不可被随意拖拽，点击外部自动收起
     private func setupSettingsWindow() {
-        let panelWidth: CGFloat = 424
-        let panelHeight: CGFloat = 480
+        let panelWidth: CGFloat = 416
+        let panelHeight: CGFloat = 560
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
-            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
+        panel.isMovable = false
+        panel.isMovableByWindowBackground = false
         panel.level = .popUpMenu
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -68,19 +70,15 @@ final class CatTrashAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handleStatusBarClick(_ sender: NSStatusBarButton) {
-        guard let event = NSApp.currentEvent else { return }
-        if event.type == .rightMouseUp {
-            showQuickContextMenu()
-        } else {
-            toggleSettingsWindow(relativeTo: sender)
-        }
+        // 左右键点击统一呼出/收起偏好设置大面板，彻底消除多面板重叠困扰
+        toggleSettingsWindow(relativeTo: sender)
     }
 
     private func toggleSettingsWindow(relativeTo button: NSStatusBarButton) {
         guard let panel = settingsWindow else { return }
 
         if panel.isVisible {
-            panel.orderOut(nil)
+            closeSettingsWindow()
             return
         }
 
@@ -97,24 +95,74 @@ final class CatTrashAppDelegate: NSObject, NSApplicationDelegate {
             targetX = btnFrame.midX - panelSize.width * 0.5
         }
         targetX = min(max(targetX, visibleFrame.minX + 12), visibleFrame.maxX - panelSize.width - 12)
-        let targetY = visibleFrame.maxY - panelSize.height - 8
+        let targetY = visibleFrame.maxY - panelSize.height - 6
 
         panel.setFrameOrigin(NSPoint(x: targetX, y: targetY))
+        panel.invalidateShadow()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        startOutsideClickMonitor()
     }
 
-    private func showQuickContextMenu() {
-        let menu = CatContextMenuBuilder.shared.buildMenu()
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
+    public func closeSettingsWindow() {
+        stopOutsideClickMonitor()
+        settingsWindow?.orderOut(nil)
+    }
+
+    private func startOutsideClickMonitor() {
+        stopOutsideClickMonitor()
+
+        // 全局监听：当用户在其他窗口或桌面点击时，自动收起设置面板
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in
+            guard let self = self, let panel = self.settingsWindow, panel.isVisible else { return }
+            let mouseLocation = NSEvent.mouseLocation
+            if !panel.frame.contains(mouseLocation) {
+                if let button = self.statusItem.button, let btnWindow = button.window {
+                    let btnFrame = btnWindow.convertToScreen(button.bounds)
+                    if btnFrame.contains(mouseLocation) {
+                        return
+                    }
+                }
+                self.closeSettingsWindow()
+            }
+        }
+
+        // 本地监听：当用户在本应用内部（如桌面交互层）点击时，自动收起设置面板
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            guard let self = self, let panel = self.settingsWindow, panel.isVisible else { return event }
+            let mouseLocation = NSEvent.mouseLocation
+            if !panel.frame.contains(mouseLocation) {
+                if let button = self.statusItem.button, let btnWindow = button.window {
+                    let btnFrame = btnWindow.convertToScreen(button.bounds)
+                    if btnFrame.contains(mouseLocation) {
+                        return event
+                    }
+                }
+                self.closeSettingsWindow()
+            }
+            return event
+        }
+    }
+
+    private func stopOutsideClickMonitor() {
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
+        }
     }
 
     public func openSettingsWindow() {
         if let button = statusItem.button {
             if settingsWindow?.isVisible == true {
-                settingsWindow?.orderOut(nil)
+                closeSettingsWindow()
                 return
             }
             toggleSettingsWindow(relativeTo: button)
