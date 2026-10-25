@@ -10,21 +10,11 @@ RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
 echo "🔨 正在编译 ${APP_NAME}..."
+SWIFT_FILES=($(find Sources/CatTrash -name "*.swift"))
 swiftc -module-cache-path /tmp/swift-module-cache \
   -target arm64-apple-macosx14.0 \
   -O \
-  Sources/CatTrash/Models/CatState.swift \
-  Sources/CatTrash/Services/CatSoundEngine.swift \
-  Sources/CatTrash/Services/TrashService.swift \
-  Sources/CatTrash/Services/SnackIconManager.swift \
-  Sources/CatTrash/Services/DesktopFileDetector.swift \
-  Sources/CatTrash/Physics/CatPhysicsEngine.swift \
-  Sources/CatTrash/Views/CatPartsView.swift \
-  Sources/CatTrash/Views/CatCanvasView.swift \
-  Sources/CatTrash/Views/PreferencesView.swift \
-  Sources/CatTrash/Windows/CatContextMenu.swift \
-  Sources/CatTrash/Windows/OverlayPanels.swift \
-  Sources/CatTrash/CatTrashApp.swift \
+  "${SWIFT_FILES[@]}" \
   -o "${MACOS_DIR}/${APP_NAME}"
 
 cat > "${CONTENTS_DIR}/Info.plist" <<EOF

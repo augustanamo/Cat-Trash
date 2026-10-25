@@ -13,35 +13,17 @@ public final class CatContextMenuBuilder: NSObject {
         let menu = NSMenu(title: "Cat Trash Context Menu")
         let prefs = CatPreferences.shared
 
-        // 1. 猫咪品种与材质 (Morph) 子菜单
-        let morphMenuItem = NSMenuItem(title: "🐱 猫咪品种与材质 (Morph)", action: nil, keyEquivalent: "")
-        let morphSubmenu = NSMenu(title: "猫咪品种与材质")
-        for morph in CatMorph.allCases {
-            let emoji: String
-            switch morph {
-            case .slime: emoji = "🍊"
-            case .bluePlush: emoji = "☁️"
-            case .calico: emoji = "🧶"
-            case .tuxedo: emoji = "🍬"
-            case .siamese: emoji = "🧀"
-            case .blackShadow: emoji = "👤"
-            }
-            let item = NSMenuItem(
-                title: "\(emoji) \(morph.displayName)",
-                action: #selector(handleMorphSelected(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = morph
-            item.state = (prefs.selectedMorph == morph) ? .on : .off
-            morphSubmenu.addItem(item)
-        }
-        morphMenuItem.submenu = morphSubmenu
-        menu.addItem(morphMenuItem)
+        // 1. 猫咪形态滑动切换进度条 (各档位猫猫头 + 左侧身体拉伸样式)
+        let sliderHost = CatMorphSliderHostView()
+        let sliderItem = NSMenuItem()
+        sliderItem.view = sliderHost
+        menu.addItem(sliderItem)
 
-        // 2. 废纸篓外观样式 (Trash Bin Style) 子菜单
-        let binMenuItem = NSMenuItem(title: "🗑️ 废纸篓外观样式 (Bin Style)", action: nil, keyEquivalent: "")
-        let binSubmenu = NSMenu(title: "废纸篓外观样式")
+        menu.addItem(.separator())
+
+        // 2. 垃圾桶样式子菜单
+        let binMenuItem = NSMenuItem(title: "🗑️ 垃圾桶样式", action: nil, keyEquivalent: "")
+        let binSubmenu = NSMenu(title: "垃圾桶样式")
         for style in TrashBinStyle.allCases {
             let emoji: String
             switch style {
@@ -65,9 +47,9 @@ public final class CatContextMenuBuilder: NSObject {
 
         menu.addItem(.separator())
 
-        // 3. 互动与桌面零食快捷功能
+        // 3. 互动与桌面零食快捷功能 (精简文案)
         let feedItem = NSMenuItem(
-            title: "🐟 在桌面生成测试零食/废纸 (Feed Fish)",
+            title: "🐟 投喂测试零食",
             action: #selector(handleSpawnSnack),
             keyEquivalent: "t"
         )
@@ -75,7 +57,7 @@ public final class CatContextMenuBuilder: NSObject {
         menu.addItem(feedItem)
 
         let isStall = SnackIconManager.shared.isSnackStallActive
-        let stallTitle = isStall ? "🍢 关闭桌面零食摊 (还原桌面图标)" : "✨ 开启桌面零食摊 (批量变零食)"
+        let stallTitle = isStall ? "🍢 关闭桌面零食摊" : "✨ 开启桌面零食摊"
         let stallItem = NSMenuItem(
             title: stallTitle,
             action: #selector(handleToggleSnackStall),
@@ -85,7 +67,7 @@ public final class CatContextMenuBuilder: NSObject {
         menu.addItem(stallItem)
 
         let resetIconsItem = NSMenuItem(
-            title: "🔄 一键还原全部桌面图标",
+            title: "🔄 还原桌面图标",
             action: #selector(handleResetIcons),
             keyEquivalent: ""
         )
@@ -93,7 +75,7 @@ public final class CatContextMenuBuilder: NSObject {
         menu.addItem(resetIconsItem)
 
         let snapItem = NSMenuItem(
-            title: "📍 复位猫桶到右下角",
+            title: "📍 复位到右下角",
             action: #selector(handleResetCorner),
             keyEquivalent: "r"
         )
@@ -101,7 +83,7 @@ public final class CatContextMenuBuilder: NSObject {
         menu.addItem(snapItem)
 
         let trashItem = NSMenuItem(
-            title: "🗑️ 打开系统废纸篓",
+            title: "🗑️ 打开废纸篓",
             action: #selector(handleOpenTrash),
             keyEquivalent: ""
         )
@@ -112,7 +94,7 @@ public final class CatContextMenuBuilder: NSObject {
 
         // 4. 打开偏好设置
         let settingsItem = NSMenuItem(
-            title: "⚙️ 偏好设置面板...",
+            title: "⚙️ 偏好设置...",
             action: #selector(handleOpenSettings),
             keyEquivalent: ","
         )
@@ -121,7 +103,7 @@ public final class CatContextMenuBuilder: NSObject {
 
         // 5. 退出应用
         let quitItem = NSMenuItem(
-            title: "🚪 退出 Cat Trash",
+            title: "🚪 退出",
             action: #selector(handleQuit),
             keyEquivalent: "q"
         )
@@ -129,12 +111,6 @@ public final class CatContextMenuBuilder: NSObject {
         menu.addItem(quitItem)
 
         return menu
-    }
-
-    @objc private func handleMorphSelected(_ sender: NSMenuItem) {
-        guard let morph = sender.representedObject as? CatMorph else { return }
-        CatPreferences.shared.selectedMorph = morph
-        CatSoundEngine.shared.playPurr()
     }
 
     @objc private func handleBinStyleSelected(_ sender: NSMenuItem) {

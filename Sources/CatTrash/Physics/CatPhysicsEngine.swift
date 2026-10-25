@@ -59,6 +59,10 @@ public final class CatPhysicsEngine: ObservableObject {
 
     /// 是否正在被鼠标按住拖拽猫头（模式 A）
     @Published public var isDraggingHead: Bool = false
+    /// 是否显示悬浮在猫桶周围的快捷控制按钮（右键触发）
+    @Published public var isFloatingMenuVisible: Bool = false
+    /// 猫咪形态滑动切换器共享模型
+    public let morphSliderModel = CatMorphSliderModel()
     /// 是否正在被拖拽移动垃圾桶本体位置
     @Published public var isDraggingBucket: Bool = false
     /// 模式 B：外部文件正在悬停于垃圾桶上方
@@ -185,8 +189,8 @@ public final class CatPhysicsEngine: ObservableObject {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let visible = screen.visibleFrame
         let s = max(scale, 0.85)
-        let targetX = visible.maxX - 72 * s
-        let targetY = visible.minY + 68 * s
+        let targetX = visible.maxX - 135 * s
+        let targetY = visible.minY + 75 * s
         bucketScreenCenter = CGPoint(x: targetX, y: targetY)
         CatPreferences.shared.customBucketOriginX = targetX
         CatPreferences.shared.customBucketOriginY = targetY
@@ -619,13 +623,14 @@ public final class CatPhysicsEngine: ObservableObject {
         nextIdleActionTime = idleActionEndTime + Double.random(in: 4.0...9.5)
     }
 
-    /// 开口在上方的桶：猫头不能直接穿过桶身往下拽；拉到桶身左右外侧后，才允许越过桶沿垂挂到桶外往下（平滑过渡）
+    /// 开口在上方的桶：在桶身内部限制不能向下穿透桶底；一旦拖出至桶身外侧，完全解除限制允许自由垂挂向下拉拽
     public func minAllowedHeadDY(forDX dx: CGFloat) -> CGFloat {
         let style = CatPreferences.shared.selectedBinStyle
         guard style != .streetMetalBox else { return -.greatestFiniteMagnitude }
-        let halfW: CGFloat = (style == .greenWheelieBin ? 58.0 : 42.0) * scale
-        let depth: CGFloat = (fullPeekYOffset + 34.0) * scale
-        let k = min(max((abs(dx) - halfW) / (34.0 * scale), 0), 1)
+        let halfW: CGFloat = (style == .greenWheelieBin ? 52.0 : 38.0) * scale
+        let depth: CGFloat = (fullPeekYOffset + 50.0) * scale
+        // 一旦光标横向稍微移出桶壁（abs(dx) > halfW - 6.0），迅速平滑过渡，允许完全自由向下拉拽，绝无空气墙黏滞感
+        let k = min(max((abs(dx) - (halfW - 6.0)) / (10.0 * scale), 0), 1)
         return 6.0 - (6.0 + depth) * k
     }
 
