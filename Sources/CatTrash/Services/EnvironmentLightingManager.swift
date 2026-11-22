@@ -16,6 +16,14 @@ public enum DayNightMode: String, CaseIterable, Identifiable, Codable {
         case .alwaysNight: return "常驻夜晚 (夜灯光晕与明眸)"
         }
     }
+
+    public var shortName: String {
+        switch self {
+        case .auto: return "跟随系统"
+        case .alwaysDay: return "常驻白天"
+        case .alwaysNight: return "常驻夜晚"
+        }
+    }
 }
 
 // MARK: - 全局环境光照状态管理器 (纯视觉光影感知，不触发任何弹窗通知)
@@ -44,7 +52,7 @@ public final class EnvironmentLightingManager: ObservableObject {
         startTimers()
     }
 
-    /// 启动后台定时检查器
+    /// 启动后台定时检查器（低功耗按需过渡，平时零高频轮询）
     private func startTimers() {
         // 每 30 秒检查一次系统时间变动与模式设置
         checkTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
@@ -55,29 +63,36 @@ public final class EnvironmentLightingManager: ObservableObject {
         if let checkTimer {
             RunLoop.main.add(checkTimer, forMode: .common)
         }
+    }
 
-        // 60fps 平滑过渡插值与小夜灯微呼吸动效
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+    private func ensureTransitionTimerRunning() {
+        guard animationTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.stepAnimation()
             }
         }
-        if let animationTimer {
-            RunLoop.main.add(animationTimer, forMode: .common)
-        }
+        RunLoop.main.add(timer, forMode: .common)
+        animationTimer = timer
+    }
+
+    private func stopTransitionTimer() {
+        animationTimer?.invalidate()
+        animationTimer = nil
     }
 
     /// 根据系统时间计算当前夜间目标深度
     public func updateTargetFactor(immediate: Bool = false) {
         let mode = CatPreferences.shared.dayNightMode
+        let newDescription: String
 
         switch mode {
         case .alwaysDay:
             targetNightFactor = 0.0
-            timePhaseDescription = "常驻白昼 · 明朗自然光"
+            newDescription = "常驻白昼 · 明朗自然光"
         case .alwaysNight:
             targetNightFactor = 1.0
-            timePhaseDescription = "常驻深夜 · 静谧夜灯常亮"
+            newDescription = "常驻深夜 · 静谧夜灯常亮"
         case .auto:
             let calendar = Calendar.current
             let now = Date()
@@ -92,40 +107,56 @@ public final class EnvironmentLightingManager: ObservableObject {
             // 05:30 ~ 06:30: 拂晓晨曦平滑过渡 (1.0 -> 0.0)
             if timeInHours >= 20.0 || timeInHours < 5.5 {
                 targetNightFactor = 1.0
-                timePhaseDescription = "深夜静谧 · 景观夜灯点亮中"
+                newDescription = "深夜静谧 · 景观夜灯点亮中"
             } else if timeInHours >= 18.5 && timeInHours < 20.0 {
                 let progress = (timeInHours - 18.5) / 1.5
                 targetNightFactor = CGFloat(progress)
-                timePhaseDescription = "暮色黄昏 · 夜灯渐亮"
+                newDescription = "暮色黄昏 · 夜灯渐亮"
             } else if timeInHours >= 5.5 && timeInHours < 6.5 {
                 let progress = 1.0 - (timeInHours - 5.5) / 1.0
                 targetNightFactor = CGFloat(progress)
-                timePhaseDescription = "破晓晨光 · 夜灯隐退"
+                newDescription = "破晓晨光 · 夜灯隐退"
             } else {
                 targetNightFactor = 0.0
-                timePhaseDescription = "自然采光 · 阳光明朗"
+                newDescription = "自然采光 · 阳光明朗"
             }
         }
 
+        if timePhaseDescription != newDescription {
+            timePhaseDescription = newDescription
+        }
+
         if immediate {
-            nightFactor = targetNightFactor
-            isNight = targetNightFactor > 0.4
+            stopTransitionTimer()
+            if abs(nightFactor - targetNightFactor) > 0.0005 {
+                nightFactor = targetNightFactor
+            }
+            let newIsNight = targetNightFactor > 0.4
+            if isNight != newIsNight {
+                isNight = newIsNight
+            }
+        } else if abs(nightFactor - targetNightFactor) > 0.002 {
+            ensureTransitionTimerRunning()
         }
     }
 
     private func stepAnimation() {
-        lampBreathingPhase += 0.035
-        if lampBreathingPhase > .pi * 2 {
-            lampBreathingPhase -= .pi * 2
-        }
-
-        // 平滑插值走向目标光照度
-        if abs(nightFactor - targetNightFactor) > 0.001 {
-            nightFactor += (targetNightFactor - nightFactor) * 0.06
-            isNight = nightFactor > 0.35
+        // 平滑插值走向目标光照度，过渡完成后立即停止定时器以达到零待机 CPU 消耗
+        if abs(nightFactor - targetNightFactor) > 0.002 {
+            nightFactor += (targetNightFactor - nightFactor) * 0.12
+            let newIsNight = nightFactor > 0.35
+            if isNight != newIsNight {
+                isNight = newIsNight
+            }
         } else {
-            nightFactor = targetNightFactor
-            isNight = targetNightFactor > 0.35
+            if abs(nightFactor - targetNightFactor) > 0.0001 {
+                nightFactor = targetNightFactor
+            }
+            let newIsNight = targetNightFactor > 0.35
+            if isNight != newIsNight {
+                isNight = newIsNight
+            }
+            stopTransitionTimer()
         }
     }
 }

@@ -14,6 +14,7 @@ struct MiniCatHeadIcon: View {
         case .tuxedo: return Color(red: 0.18, green: 0.18, blue: 0.22)
         case .siamese: return Color(red: 0.96, green: 0.92, blue: 0.86)
         case .blackShadow: return Color(red: 0.08, green: 0.06, blue: 0.12)
+        case .cloudCotton: return Color(red: 0.98, green: 0.98, blue: 0.96)
         }
     }
 
@@ -74,6 +75,11 @@ struct MiniCatHeadIcon: View {
                     // 暗影烟雾：微弱紫色暗光
                     MochiCatHeadShape()
                         .stroke(Color(red: 0.42, green: 0.25, blue: 0.65).opacity(0.7), lineWidth: 1.5)
+                        .frame(width: 20, height: 16)
+                        .blur(radius: 0.8)
+                case .cloudCotton:
+                    MochiCatHeadShape()
+                        .stroke(Color.white.opacity(0.8), lineWidth: 2)
                         .frame(width: 20, height: 16)
                         .blur(radius: 0.8)
                 }
@@ -207,6 +213,11 @@ struct CatMorphBodyTrackView: View {
                         .blur(radius: 2.0)
                         .padding(.horizontal, 4)
                 }
+            case .cloudCotton:
+                Capsule()
+                    .fill(LinearGradient(stops: CloudCottonSkin.cylinderBaseStops,
+                                         startPoint: .top, endPoint: .bottom))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.7), lineWidth: 2).blur(radius: 0.7))
             }
 
             // 最左侧的小尾巴 / 足部收边小弧圈
@@ -232,7 +243,7 @@ struct CatMorphSliderView: View {
     @ObservedObject var model: CatMorphSliderModel
 
     private let morphs = CatMorph.allCases
-    var trackWidth: CGFloat = 175
+    var trackWidth: CGFloat = 198
     private let trackHeight: CGFloat = 18
 
     /// 当前选中的索引
@@ -240,7 +251,7 @@ struct CatMorphSliderView: View {
         morphs.firstIndex(of: prefs.selectedMorph) ?? 0
     }
 
-    /// 滑块当前平滑位置（0.0 ~ 5.0）
+    /// 滑块当前平滑位置（随独立猫咪选项数量计算）
     private var effectiveProgress: CGFloat {
         if let drag = model.dragIndex {
             return min(max(drag, 0), CGFloat(morphs.count - 1))
@@ -276,7 +287,7 @@ struct CatMorphSliderView: View {
                 fillWidth: currentThumbX + 6
             )
 
-            // 3. 6 个档位的微型猫猫头打卡点
+            // 3. 各档位的微型猫猫头打卡点
             ForEach(0..<morphs.count, id: \.self) { idx in
                 let morph = morphs[idx]
                 let isCurrent = (idx == currentIndex)

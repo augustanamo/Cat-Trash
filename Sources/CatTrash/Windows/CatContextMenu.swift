@@ -21,7 +21,24 @@ public final class CatContextMenuBuilder: NSObject {
 
         menu.addItem(.separator())
 
-        // 2. 垃圾桶样式子菜单
+        // 2. 猫咪皮肤独立子菜单，与桶样式互不修改。
+        let catMenuItem = NSMenuItem(title: "🐱 猫咪皮肤", action: nil, keyEquivalent: "")
+        let catSubmenu = NSMenu(title: "猫咪皮肤")
+        for morph in CatMorph.allCases {
+            let item = NSMenuItem(
+                title: morph.displayName,
+                action: #selector(handleMorphSelected(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = morph
+            item.state = prefs.selectedMorph == morph ? .on : .off
+            catSubmenu.addItem(item)
+        }
+        catMenuItem.submenu = catSubmenu
+        menu.addItem(catMenuItem)
+
+        // 3. 垃圾桶样式子菜单
         let binMenuItem = NSMenuItem(title: "🗑️ 垃圾桶样式", action: nil, keyEquivalent: "")
         let binSubmenu = NSMenu(title: "垃圾桶样式")
         for style in TrashBinStyle.allCases {
@@ -31,6 +48,7 @@ public final class CatContextMenuBuilder: NSObject {
             case .greenWheelieBin: emoji = "🗑️"
             case .streetMetalBox: emoji = "📮"
             case .metalMesh: emoji = "🌐"
+            case .bambooBasket: emoji = "🧺"
             }
             let item = NSMenuItem(
                 title: "\(emoji) \(style.displayName)",
@@ -116,6 +134,12 @@ public final class CatContextMenuBuilder: NSObject {
     @objc private func handleBinStyleSelected(_ sender: NSMenuItem) {
         guard let style = sender.representedObject as? TrashBinStyle else { return }
         CatPreferences.shared.selectedBinStyle = style
+        CatSoundEngine.shared.playPurr()
+    }
+
+    @objc private func handleMorphSelected(_ sender: NSMenuItem) {
+        guard let morph = sender.representedObject as? CatMorph else { return }
+        CatPreferences.shared.selectedMorph = morph
         CatSoundEngine.shared.playPurr()
     }
 

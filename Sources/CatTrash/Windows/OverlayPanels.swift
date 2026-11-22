@@ -10,6 +10,7 @@ public final class CatOverlayWindowController: NSObject {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var screenChangeObserver: Any?
+    private var lastMouseMoveCheckTime: TimeInterval = 0
 
     private override init() {
         super.init()
@@ -105,6 +106,12 @@ public final class CatOverlayWindowController: NSObject {
         }
     }
 
+    private func setIgnoresMouseEvents(_ panel: NSPanel, _ ignore: Bool) {
+        if panel.ignoresMouseEvents != ignore {
+            panel.ignoresMouseEvents = ignore
+        }
+    }
+
     private func handleMonitoredMouseEvent(_ event: NSEvent) {
         let physics = CatPhysicsEngine.shared
         let mouse = NSEvent.mouseLocation
@@ -113,7 +120,7 @@ public final class CatOverlayWindowController: NSObject {
         // 若正在进行模式 A（拉拽猫头），保持全屏窗口穿透以便底层桌面文件可被无遮挡探测，同时实时更新猫头坐标与 Option 点化状态
         if physics.isDraggingHead {
             for panel in overlayPanels {
-                panel.ignoresMouseEvents = true
+                setIgnoresMouseEvents(panel, true)
             }
             if event.type == .leftMouseDragged || event.type == .flagsChanged {
                 physics.updateHeadDrag(toScreenPoint: mouse, isOptionPressed: isOption)
@@ -124,6 +131,13 @@ public final class CatOverlayWindowController: NSObject {
             return
         }
 
+        // 高回报率鼠标节流：非点击/非拖拽的普通 mouseMoved 事件限制在约 40Hz，避免 1000Hz 鼠标高频触发主线程与 WindowServer IPC
+        if event.type == .mouseMoved {
+            let now = ProcessInfo.processInfo.systemUptime
+            guard now - lastMouseMoveCheckTime >= 0.024 else { return }
+            lastMouseMoveCheckTime = now
+        }
+
         // 若悬浮菜单正打开，用户在空白区域或外部点击鼠标，则自动收起悬浮菜单
         if physics.isFloatingMenuVisible && (event.type == .leftMouseDown || event.type == .rightMouseDown) {
             let bucket = physics.bucketScreenCenter
@@ -131,15 +145,11 @@ public final class CatOverlayWindowController: NSObject {
             let dx = mouse.x - bucket.x
             let dy = mouse.y - bucket.y
             let style = CatPreferences.shared.selectedBinStyle
-            let sideClearance = style.sideClearance * s
-            let topY = -style.topSliderOffsetY * s
-
-            let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
-            let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
-            let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
+            let inControls = FloatingControlsLayout(style: style).contains(
+                screenPoint: mouse, bucketCenter: bucket, scale: physics.scale)
             let nearBucket = hypot(dx, dy) < (style == .greenWheelieBin ? 145 : 105) * s
 
-            if !inTopSlider && !inRightBins && !inLeftControls && !nearBucket {
+            if !inControls && !nearBucket {
                 physics.isFloatingMenuVisible = false
             }
         }
@@ -154,21 +164,27 @@ public final class CatOverlayWindowController: NSObject {
         let head = physics.currentHeadScreenPoint
         let s = max(physics.scale, 0.85)
 
+        // 当鼠标进入猫桶警戒半径（如准备盯梢或点击拖拽）时，立即从 12Hz 节能待机唤醒至 60Hz 满帧响应
+        let distToBucket = hypot(mouse.x - bucket.x, mouse.y - bucket.y)
+        if distToBucket < 230 * s {
+            physics.wakeUpSimulationIfNeeded()
+        }
+
         for panel in overlayPanels {
             guard let screen = panel.screen ?? NSScreen.screens.first(where: { $0.frame == panel.frame }) else {
-                panel.ignoresMouseEvents = true
+                setIgnoresMouseEvents(panel, true)
                 continue
             }
 
             let isMouseOnThisScreen = screen.frame.contains(mouse)
 
             if physics.isDraggingHead {
-                panel.ignoresMouseEvents = true
+                setIgnoresMouseEvents(panel, true)
                 continue
             }
 
             if (physics.isDraggingBucket || physics.isExternalFileHovering) && isMouseOnThisScreen {
-                panel.ignoresMouseEvents = false
+                setIgnoresMouseEvents(panel, false)
                 continue
             }
 
@@ -176,23 +192,19 @@ public final class CatOverlayWindowController: NSObject {
                 let dx = mouse.x - bucket.x
                 let dy = mouse.y - bucket.y
                 let style = CatPreferences.shared.selectedBinStyle
-                let sideClearance = style.sideClearance * s
-                let topY = -style.topSliderOffsetY * s
 
                 var nearFloatingControls = false
                 if physics.isFloatingMenuVisible {
-                    let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
-                    let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
-                    let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
-                    nearFloatingControls = inTopSlider || inRightBins || inLeftControls
+                    nearFloatingControls = FloatingControlsLayout(style: style).contains(
+                        screenPoint: mouse, bucketCenter: bucket, scale: physics.scale)
                 }
 
                 let nearBucket = hypot(dx, dy) < (style == .greenWheelieBin ? 145 : 105) * s
                 let nearHead = hypot(mouse.x - head.x, mouse.y - head.y) < 72 * s
 
-                panel.ignoresMouseEvents = !(nearBucket || nearHead || nearFloatingControls)
+                setIgnoresMouseEvents(panel, !(nearBucket || nearHead || nearFloatingControls))
             } else {
-                panel.ignoresMouseEvents = true
+                setIgnoresMouseEvents(panel, true)
             }
         }
     }
@@ -234,19 +246,12 @@ final class CatDropAndHitTestView: NSView {
         let dx = screenPt.x - bucketPt.x
         let dy = screenPt.y - bucketPt.y
         let style = CatPreferences.shared.selectedBinStyle
-        let sideClearance = style.sideClearance * s
-        let topY = -style.topSliderOffsetY * s
 
         // 如果周围悬浮按钮处于打开状态，点击命中三大群组时派发给 SwiftUI 宿主视图
-        if physics.isFloatingMenuVisible {
-            let inTopSlider = abs(dx) <= 95 * s && dy >= topY - 14 * s && dy <= topY + 14 * s
-            let inRightBins = dx >= sideClearance - 16 * s && dx <= sideClearance + 16 * s && abs(dy) <= 72 * s
-            let inLeftControls = dx >= -sideClearance - 16 * s && dx <= -sideClearance + 16 * s && abs(dy) <= 36 * s
-
-            if inTopSlider || inRightBins || inLeftControls {
-                if let hosting = subviews.first {
-                    return hosting.hitTest(point) ?? hosting
-                }
+        if physics.isFloatingMenuVisible && FloatingControlsLayout(style: style).contains(
+            screenPoint: screenPt, bucketCenter: bucketPt, scale: physics.scale) {
+            if let hosting = subviews.first {
+                return hosting.hitTest(point) ?? hosting
             }
         }
 

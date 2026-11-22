@@ -228,29 +228,62 @@ public final class CatPhysicsEngine: ObservableObject {
         return max(0.24, narrowed)
     }
 
-    // MARK: - 60~120Hz 物理与动效主循环
+    // MARK: - 12~60Hz 自适应动态帧率物理与动效主循环
+    private var currentTimerInterval: TimeInterval = 1.0 / 60.0
+
     private func startSimulationLoop() {
         lastUpdateTime = ProcessInfo.processInfo.systemUptime
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        scheduleLoopTimer(interval: 1.0 / 60.0)
+    }
+
+    private func scheduleLoopTimer(interval: TimeInterval) {
+        guard abs(currentTimerInterval - interval) > 0.001 || timer == nil else { return }
+        timer?.invalidate()
+        currentTimerInterval = interval
+        let newTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.stepSimulation()
             }
         }
-        if let timer {
-            RunLoop.main.add(timer, forMode: .common)
+        RunLoop.main.add(newTimer, forMode: .common)
+        timer = newTimer
+    }
+
+    /// 当鼠标靠近、点击、拖拽或触发状态变更时，立即唤醒至 60Hz 满血帧率
+    public func wakeUpSimulationIfNeeded() {
+        if currentTimerInterval > 1.0 / 50.0 {
+            lastUpdateTime = ProcessInfo.processInfo.systemUptime
+            scheduleLoopTimer(interval: 1.0 / 60.0)
         }
+    }
+
+    /// 判断当前是否需要 60Hz 高刷物理计算；若猫猫安静缩在桶内且鼠标远离，则降频至 12Hz 节能呼吸模式
+    private var needsHighFrameRate: Bool {
+        if isDraggingHead || isDraggingBucket || isExternalFileHovering { return true }
+        if state != .idle { return true }
+        if !particles.isEmpty { return true }
+        if hypot(headDisplacement.dx, headDisplacement.dy) > 0.3 || hypot(headVelocity.dx, headVelocity.dy) > 1.5 { return true }
+        if jiggleAmplitude > 0.01 { return true }
+        if idleSubAction != .stealth { return true }
+        if abs(targetPeekLevel - stealthPeekLevel) > 0.015 { return true }
+        if abs(leftEarTwitchAngle) > 0.25 || abs(rightEarTwitchAngle) > 0.25 || lidBonkHeadSquish > 0.015 { return true }
+        if abs(lidAngularVelocity) > 1.5 { return true }
+        return false
     }
 
     private func stepSimulation() {
         let now = ProcessInfo.processInfo.systemUptime
-        let dt = min(max(now - lastUpdateTime, 1.0 / 240.0), 0.05)
+        let dt = min(max(now - lastUpdateTime, 1.0 / 240.0), 0.12)
         lastUpdateTime = now
 
         // 1. 呼吸与微动相位更新
         breathingPhase += CGFloat(dt) * 2.4
+        if breathingPhase > .pi * 200 {
+            breathingPhase -= .pi * 200
+        }
         if case .chomping = state {
             chewPhase += CGFloat(dt) * 16.0
-        } else {
+        } else if chewPhase != 0 {
             chewPhase = 0
         }
 
@@ -258,10 +291,13 @@ public final class CatPhysicsEngine: ObservableObject {
         if isExternalFileHovering && !isDraggingHead {
             // 模式 B 文件悬停投喂时：平滑跟随目标点，不再与回弹弹簧打架导致抖动
             let lerpFactor = min(CGFloat(dt) * 14.0, 1.0)
-            headDisplacement.dx += (externalHoverTarget.dx - headDisplacement.dx) * lerpFactor
-            headDisplacement.dy += (externalHoverTarget.dy - headDisplacement.dy) * lerpFactor
+            let newDX = headDisplacement.dx + (externalHoverTarget.dx - headDisplacement.dx) * lerpFactor
+            let newDY = headDisplacement.dy + (externalHoverTarget.dy - headDisplacement.dy) * lerpFactor
+            if hypot(newDX - headDisplacement.dx, newDY - headDisplacement.dy) > 0.05 {
+                headDisplacement = CGVector(dx: newDX, dy: newDY)
+            }
             headVelocity = .zero
-        } else if !isDraggingHead {
+        } else if !isDraggingHead && (headDisplacement != .zero || headVelocity != .zero) {
             let prefs = CatPreferences.shared
             let morph = prefs.selectedMorph
             let speedMul = CGFloat(prefs.snapSpeed)
@@ -300,35 +336,43 @@ public final class CatPhysicsEngine: ObservableObject {
                 }
             }
 
-            headDisplacement.dx += headVelocity.dx * CGFloat(dt)
+            let nextDX = headDisplacement.dx + headVelocity.dx * CGFloat(dt)
             // 物理回弹：各桶均限制不能向下穿透桶底或内胆底部面板
             let minBounceY: CGFloat = (prefs.selectedBinStyle == .streetMetalBox)
-                ? min(0.0, minAllowedHeadDY(forDX: headDisplacement.dx))
-                : min((morph == .tuxedo) ? -16.0 : -9.0, minAllowedHeadDY(forDX: headDisplacement.dx))
-            headDisplacement.dy = max(minBounceY, headDisplacement.dy + headVelocity.dy * CGFloat(dt))
+                ? min(0.0, minAllowedHeadDY(forDX: nextDX))
+                : min((morph == .tuxedo) ? -16.0 : -9.0, minAllowedHeadDY(forDX: nextDX))
+            let nextDY = max(minBounceY, headDisplacement.dy + headVelocity.dy * CGFloat(dt))
 
-            if hypot(headDisplacement.dx, headDisplacement.dy) < 0.25 &&
+            if hypot(nextDX, nextDY) < 0.25 &&
                hypot(headVelocity.dx, headVelocity.dy) < 2.0 {
-                headDisplacement = .zero
+                if headDisplacement != .zero {
+                    headDisplacement = .zero
+                }
                 headVelocity = .zero
+            } else {
+                headDisplacement = CGVector(dx: nextDX, dy: nextDY)
             }
         }
 
         // 3. 史莱姆果冻抖动衰减
         if jiggleAmplitude > 0.01 {
             jiggleAmplitude *= pow(0.08, CGFloat(dt))
-        } else {
+        } else if jiggleAmplitude != 0 {
             jiggleAmplitude = 0
         }
 
-        // 4. 更新史莱姆内部微气泡漂浮
-        let velMag = hypot(headVelocity.dx, headVelocity.dy)
-        for i in slimeBubbles.indices {
-            slimeBubbles[i].spineT += (slimeBubbles[i].speed + velMag * 0.0003) * CGFloat(dt)
-            if slimeBubbles[i].spineT > 0.95 {
-                slimeBubbles[i].spineT = 0.08
-                slimeBubbles[i].lateralOffset = CGFloat.random(in: -0.55...0.55)
+        // 4. 更新史莱姆内部微气泡漂浮（仅在当前品种为橘猫史莱姆且猫身可见时按需计算）
+        if CatPreferences.shared.selectedMorph == .slime && (currentStretchDistance > 1.5 || stealthPeekLevel > 0.12) {
+            let velMag = hypot(headVelocity.dx, headVelocity.dy)
+            var updatedBubbles = slimeBubbles
+            for i in updatedBubbles.indices {
+                updatedBubbles[i].spineT += (updatedBubbles[i].speed + velMag * 0.0003) * CGFloat(dt)
+                if updatedBubbles[i].spineT > 0.95 {
+                    updatedBubbles[i].spineT = 0.08
+                    updatedBubbles[i].lateralOffset = CGFloat.random(in: -0.55...0.55)
+                }
             }
+            slimeBubbles = updatedBubbles
         }
 
         // 5. 更新粒子系统（碎屑、星光、打嗝泡泡）
@@ -336,6 +380,9 @@ public final class CatPhysicsEngine: ObservableObject {
 
         // 6. 更新待机眨眼、抖耳与眼神游移
         updateIdleMicroAnimations(now: now, dt: dt)
+
+        // 7. 根据当前活跃度自适应切换 60Hz 交互模式与 12Hz 待机节能模式
+        scheduleLoopTimer(interval: needsHighFrameRate ? (1.0 / 60.0) : (1.0 / 12.0))
     }
 
     private func updateParticles(dt: TimeInterval) {
@@ -391,9 +438,21 @@ public final class CatPhysicsEngine: ObservableObject {
             }
             nextEarTwitchTime = now + Double.random(in: 2.4...5.2)
         }
-        leftEarTwitchAngle *= pow(0.015, CGFloat(dt))
-        rightEarTwitchAngle *= pow(0.015, CGFloat(dt))
-        lidBonkHeadSquish *= pow(0.008, CGFloat(dt))
+        if abs(leftEarTwitchAngle) > 0.05 {
+            leftEarTwitchAngle *= pow(0.015, CGFloat(dt))
+        } else if leftEarTwitchAngle != 0 {
+            leftEarTwitchAngle = 0
+        }
+        if abs(rightEarTwitchAngle) > 0.05 {
+            rightEarTwitchAngle *= pow(0.015, CGFloat(dt))
+        } else if rightEarTwitchAngle != 0 {
+            rightEarTwitchAngle = 0
+        }
+        if lidBonkHeadSquish > 0.005 {
+            lidBonkHeadSquish *= pow(0.008, CGFloat(dt))
+        } else if lidBonkHeadSquish != 0 {
+            lidBonkHeadSquish = 0
+        }
 
         let isGreenWheelie = (CatPreferences.shared.selectedBinStyle == .greenWheelieBin)
         let s = max(scale, 0.85)
@@ -407,11 +466,11 @@ public final class CatPhysicsEngine: ObservableObject {
         if state == .idle && !isDraggingHead && !isExternalFileHovering {
             if distToRim < 68 * s {
                 // 1. 鼠标悬停靠近桶沿耳朵位置：耳朵警觉立起，眼睛从桶沿/盖子缝隙冒出一条缝
-                idleSubAction = .alertHover
+                if idleSubAction != .alertHover { idleSubAction = .alertHover }
                 targetPeekLevel = isGreenWheelie ? 0.34 : 0.46
                 targetLidAngle = 25.0
-                lidPawPushProgress *= pow(0.01, CGFloat(dt))
-                headTiltAngle = 0
+                if lidPawPushProgress > 0.005 { lidPawPushProgress *= pow(0.01, CGFloat(dt)) } else if lidPawPushProgress != 0 { lidPawPushProgress = 0 }
+                if headTiltAngle != 0 { headTiltAngle = 0 }
                 cursorHoverStartTime = nil
             } else if distToRim < 195 * s {
                 // 2. 盯梢鼠标 (Cursor Tracker)：进入警戒范围，探出半个脑袋（顶高盖子）紧盯光标；悬停久了会歪头
@@ -420,15 +479,17 @@ public final class CatPhysicsEngine: ObservableObject {
                 }
                 let hoverDuration = now - (cursorHoverStartTime ?? now)
                 let shouldTilt = hoverDuration > 1.8
-                idleSubAction = .cursorTracker(isTiltingHead: shouldTilt)
+                let desiredSubAction = IdleSubAction.cursorTracker(isTiltingHead: shouldTilt)
+                if idleSubAction != desiredSubAction { idleSubAction = desiredSubAction }
                 targetPeekLevel = isGreenWheelie ? 0.56 : 0.68
                 targetLidAngle = 35.0
-                lidPawPushProgress *= pow(0.01, CGFloat(dt))
-                headTiltAngle = shouldTilt ? (mouseLoc.x < bucketScreenCenter.x ? -11.0 : 11.0) : 0
+                if lidPawPushProgress > 0.005 { lidPawPushProgress *= pow(0.01, CGFloat(dt)) } else if lidPawPushProgress != 0 { lidPawPushProgress = 0 }
+                let desiredTilt: CGFloat = shouldTilt ? (mouseLoc.x < bucketScreenCenter.x ? -11.0 : 11.0) : 0
+                if headTiltAngle != desiredTilt { headTiltAngle = desiredTilt }
             } else {
                 // 3. 鼠标远离：执行默认潜伏或每隔几秒随机触发一次暗中观察/掀盖小动作
                 cursorHoverStartTime = nil
-                headTiltAngle = 0
+                if headTiltAngle != 0 { headTiltAngle = 0 }
 
                 if now < idleActionEndTime {
                     // 正在执行某个随机小动作
@@ -437,7 +498,7 @@ public final class CatPhysicsEngine: ObservableObject {
                         // 偶尔“咣当”一声，盖子被猫猫从里面用头顶得开合晃动一下
                         targetPeekLevel = 0.32
                         targetLidAngle = 18.0
-                        lidPawPushProgress = 0
+                        if lidPawPushProgress != 0 { lidPawPushProgress = 0 }
                     case .lidPawPushPeek:
                         // 猫猫伸出一只爪子把盖子往上推开（像掀井盖一样），探出半个脑袋看看外面，然后松手“啪嗒”一声盖子落回脑袋上
                         let remaining = idleActionEndTime - now
@@ -492,12 +553,16 @@ public final class CatPhysicsEngine: ObservableObject {
                     }
                 } else {
                     // 回到默认待机：敞口桶缩回桶底只露耳朵；经典掀盖绿桶用头和耳朵把绿盖子顶开一道三角缝（约 16.5°），露出缝隙里亮晶晶的眼睛！
-                    idleSubAction = .stealth
+                    if idleSubAction != .stealth { idleSubAction = .stealth }
                     targetPeekLevel = isGreenWheelie ? 0.16 : 0.0
                     targetLidAngle = 16.5 + sin(breathingPhase) * 1.3
-                    sniffPhase = 0
-                    sneakPawPhase = 0
-                    lidPawPushProgress *= pow(0.01, CGFloat(dt))
+                    if sniffPhase != 0 { sniffPhase = 0 }
+                    if sneakPawPhase != 0 { sneakPawPhase = 0 }
+                    if lidPawPushProgress > 0.005 {
+                        lidPawPushProgress *= pow(0.01, CGFloat(dt))
+                    } else if lidPawPushProgress != 0 {
+                        lidPawPushProgress = 0
+                    }
 
                     if now >= nextIdleActionTime {
                         triggerRandomIdleAction(now: now)
@@ -507,10 +572,10 @@ public final class CatPhysicsEngine: ObservableObject {
         } else {
             // 非待机状态（被拉拽、锁定或吞食中）：完全探出桶口，绿桶盖由于重力向后大翻开并夸张晃荡！
             targetPeekLevel = 1.0
-            headTiltAngle = 0
-            sniffPhase = 0
-            sneakPawPhase = 0
-            lidPawPushProgress = 0
+            if headTiltAngle != 0 { headTiltAngle = 0 }
+            if sniffPhase != 0 { sniffPhase = 0 }
+            if sneakPawPhase != 0 { sneakPawPhase = 0 }
+            if lidPawPushProgress != 0 { lidPawPushProgress = 0 }
 
             if isDraggingHead && arePawsClingingToRim && currentStretchDistance < 42 {
                 // 刚拽动猫头、爪子还扒着桶沿时：猫头先把盖子向上顶起至 ~78°
@@ -523,57 +588,76 @@ public final class CatPhysicsEngine: ObservableObject {
             }
         }
 
-        // 驱动绿色桶盖的弹簧摆锤物理（向后翻开时低阻尼夸张晃荡，盖合在猫头上时带碰撞反弹）
-        let isFlippedBack = (lidOpenAngle > 75.0 || targetLidAngle > 75.0)
-        let lidStiffness: CGFloat = isFlippedBack ? 115.0 : 210.0
-        let lidDamping: CGFloat = isFlippedBack ? 5.2 : 11.5
-        let lidForce = -lidStiffness * (lidOpenAngle - targetLidAngle) - lidDamping * lidAngularVelocity
-        lidAngularVelocity += lidForce * CGFloat(dt)
-        lidOpenAngle += lidAngularVelocity * CGFloat(dt)
+        // 驱动绿色桶盖的弹簧摆锤物理（仅在选用经典掀盖绿环卫桶时计算与发布）
+        if isGreenWheelie {
+            let isFlippedBack = (lidOpenAngle > 75.0 || targetLidAngle > 75.0)
+            let lidStiffness: CGFloat = isFlippedBack ? 115.0 : 210.0
+            let lidDamping: CGFloat = isFlippedBack ? 5.2 : 11.5
+            let lidForce = -lidStiffness * (lidOpenAngle - targetLidAngle) - lidDamping * lidAngularVelocity
+            lidAngularVelocity += lidForce * CGFloat(dt)
+            var nextLidAngle = lidOpenAngle + lidAngularVelocity * CGFloat(dt)
 
-        // 当盖子向下落回猫头顶最小支撑角（约 12.5°）时，发生“咣当/啪嗒”弹性碰撞反弹，绝不穿透猫脑袋！
-        let minHeadPropAngle: CGFloat = (state == .idle) ? 12.5 : 8.0
-        if lidOpenAngle < minHeadPropAngle {
-            lidOpenAngle = minHeadPropAngle
-            if lidAngularVelocity < -18.0 {
-                lidAngularVelocity = -lidAngularVelocity * 0.46
-                lidBonkHeadSquish = min(1.0, abs(lidAngularVelocity) / 140.0)
-            } else {
-                lidAngularVelocity = 0
+            // 当盖子向下落回猫头顶最小支撑角（约 12.5°）时，发生“咣当/啪嗒”弹性碰撞反弹，绝不穿透猫脑袋！
+            let minHeadPropAngle: CGFloat = (state == .idle) ? 12.5 : 8.0
+            if nextLidAngle < minHeadPropAngle {
+                nextLidAngle = minHeadPropAngle
+                if lidAngularVelocity < -18.0 {
+                    lidAngularVelocity = -lidAngularVelocity * 0.46
+                    lidBonkHeadSquish = min(1.0, abs(lidAngularVelocity) / 140.0)
+                } else {
+                    lidAngularVelocity = 0
+                }
+            } else if nextLidAngle > 148.0 {
+                nextLidAngle = 148.0
+                lidAngularVelocity = -abs(lidAngularVelocity) * 0.45
             }
-        } else if lidOpenAngle > 148.0 {
-            lidOpenAngle = 148.0
-            lidAngularVelocity = -abs(lidAngularVelocity) * 0.45
+            if abs(nextLidAngle - lidOpenAngle) > 0.03 {
+                lidOpenAngle = nextLidAngle
+            }
+        } else {
+            lidAngularVelocity = 0
         }
 
         // 平滑插值更新潜伏探头高度
         let peekSpeed: CGFloat = (targetPeekLevel > stealthPeekLevel) ? 7.5 : 4.2
-        stealthPeekLevel += (targetPeekLevel - stealthPeekLevel) * min(CGFloat(dt) * peekSpeed, 1.0)
+        let nextPeek = stealthPeekLevel + (targetPeekLevel - stealthPeekLevel) * min(CGFloat(dt) * peekSpeed, 1.0)
+        if abs(nextPeek - stealthPeekLevel) > 0.001 {
+            stealthPeekLevel = nextPeek
+        } else if stealthPeekLevel != targetPeekLevel {
+            stealthPeekLevel = targetPeekLevel
+        }
 
         // 眼神跟随鼠标或警惕左右打量
         let headLoc = currentHeadScreenPoint
         let dx = mouseLoc.x - headLoc.x
         let dy = mouseLoc.y - headLoc.y
         let dist = hypot(dx, dy)
+        var nextGaze = pupilGazeOffset
         if case .peekABoo = idleSubAction {
             // 暗中探头时：眼珠警惕地左右扫视桌面
             let lookX = sin(CGFloat(now) * 4.2) * 3.8
-            pupilGazeOffset.dx += (lookX - pupilGazeOffset.dx) * min(CGFloat(dt) * 8.0, 1.0)
-            pupilGazeOffset.dy = 0.5
+            nextGaze.dx += (lookX - nextGaze.dx) * min(CGFloat(dt) * 8.0, 1.0)
+            nextGaze.dy = 0.5
         } else if case .lidPawPushPeek = idleSubAction {
             // 单爪推开井盖探出半个脑袋时：好奇地左右打量外面世界
             let lookX = sin(CGFloat(now) * 4.8) * 4.0
-            pupilGazeOffset.dx += (lookX - pupilGazeOffset.dx) * min(CGFloat(dt) * 9.0, 1.0)
-            pupilGazeOffset.dy = 0.6
+            nextGaze.dx += (lookX - nextGaze.dx) * min(CGFloat(dt) * 9.0, 1.0)
+            nextGaze.dy = 0.6
         } else if dist > 4 && dist < 450 {
             let maxOffset: CGFloat = 3.8
             let targetX = (dx / dist) * min(dist / 45.0, 1.0) * maxOffset
             let targetY = (dy / dist) * min(dist / 45.0, 1.0) * maxOffset
-            pupilGazeOffset.dx += (targetX - pupilGazeOffset.dx) * min(CGFloat(dt) * 10.0, 1.0)
-            pupilGazeOffset.dy += (targetY - pupilGazeOffset.dy) * min(CGFloat(dt) * 10.0, 1.0)
+            nextGaze.dx += (targetX - nextGaze.dx) * min(CGFloat(dt) * 10.0, 1.0)
+            nextGaze.dy += (targetY - nextGaze.dy) * min(CGFloat(dt) * 10.0, 1.0)
         } else {
-            pupilGazeOffset.dx *= 0.9
-            pupilGazeOffset.dy *= 0.9
+            nextGaze.dx *= 0.9
+            nextGaze.dy *= 0.9
+            if hypot(nextGaze.dx, nextGaze.dy) < 0.02 {
+                nextGaze = .zero
+            }
+        }
+        if hypot(nextGaze.dx - pupilGazeOffset.dx, nextGaze.dy - pupilGazeOffset.dy) > 0.015 || (nextGaze == .zero && pupilGazeOffset != .zero) {
+            pupilGazeOffset = nextGaze
         }
     }
 
@@ -663,7 +747,7 @@ public final class CatPhysicsEngine: ObservableObject {
             depth = (fullPeekYOffset + 50.0) * scale
             let k = min(max((abs(dx) - (halfW - 6.0)) / (10.0 * scale), 0), 1)
             return 6.0 - (6.0 + depth) * k
-        case .macOSFrosted, .metalMesh:
+        case .macOSFrosted, .metalMesh, .bambooBasket:
             halfW = 38.0 * scale
             depth = (fullPeekYOffset + 50.0) * scale
             let k = min(max((abs(dx) - (halfW - 6.0)) / (10.0 * scale), 0), 1)
@@ -680,6 +764,7 @@ public final class CatPhysicsEngine: ObservableObject {
 
     // MARK: - 模式 A：用户按住猫头向外拖拽 (Rubber-Band Active Pull)
     public func beginHeadDrag() {
+        wakeUpSimulationIfNeeded()
         stateResetTask?.cancel()
         isDraggingHead = true
         headVelocity = .zero
@@ -711,7 +796,8 @@ public final class CatPhysicsEngine: ObservableObject {
         }
 
         let morph = CatPreferences.shared.selectedMorph
-        let clingThreshold: CGFloat = 68.0 * morph.pullResistanceMultiplier
+        let isCloudCotton = morph == .cloudCotton
+        let clingThreshold: CGFloat = isCloudCotton ? 24.0 : 68.0 * morph.pullResistanceMultiplier
         let dampingSetting = CGFloat(CatPreferences.shared.stretchDamping) * morph.pullResistanceMultiplier
         let stiffnessScale = max(0.38, 1.0 - (dampingSetting - 0.2) * 0.36)
         let softLimit = maxStretchDistance * stiffnessScale
@@ -720,13 +806,16 @@ public final class CatPhysicsEngine: ObservableObject {
         if rawDist < clingThreshold {
             arePawsClingingToRim = true
             // 爪子死扣桶沿/暗格门板阶段：位移受强阻力抑制
-            dampedDist = rawDist * (0.48 / morph.pullResistanceMultiplier)
+            dampedDist = rawDist * (isCloudCotton ? 0.82 : 0.48 / morph.pullResistanceMultiplier)
         } else {
             if arePawsClingingToRim {
                 arePawsClingingToRim = false
                 NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
             }
-            dampedDist = softLimit * (1.0 - exp(-rawDist / max(softLimit * 0.85, 120.0)))
+            // 云絮材质先轻柔拉出，再逐渐增加阻力，与所选桶无关。
+            dampedDist = isCloudCotton
+                ? min(rawDist * (0.96 - 0.00028 * rawDist), softLimit)
+                : softLimit * (1.0 - exp(-rawDist / max(softLimit * 0.85, 120.0)))
         }
 
         let ux = rawDX / rawDist

@@ -102,6 +102,8 @@ struct ProfiledCatBodyShape: Shape {
     var basePoolFlare: CGFloat = 0
     var wobblePhase: CGFloat = 0
     var wobbleAmp: CGFloat = 0
+    var endCapExtension: CGFloat = 12
+    var startCapExtension: CGFloat = 18
 
     static let samples = 56
 
@@ -153,6 +155,42 @@ struct ProfiledCatBodyShape: Shape {
         return (left, right)
     }
 
+    /// 在桶口附近的真实身体截面内取尾根，保留重叠，拉伸和转弯时也不会悬空。
+    func tailAttachment(nearY targetY: CGFloat) -> (root: CGPoint, outward: CGVector) {
+        var bestPoint = startPoint
+        var bestOutward = CGVector(dx: 1, dy: 0)
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        var previous: (point: CGPoint, outward: CGVector)?
+        for i in 0...Self.samples {
+            let t = CGFloat(i) / CGFloat(Self.samples)
+            let f = frame(at: t)
+            let side: CGFloat = f.normal.dx >= 0 ? 1 : -1
+            let width = max(halfWidth(at: t) - 4, 0)
+            let point = CGPoint(
+                x: f.center.x + f.normal.dx * side * width,
+                y: f.center.y + f.normal.dy * side * width
+            )
+            let outward = CGVector(dx: f.normal.dx * side, dy: f.normal.dy * side)
+            let distance = abs(point.y - targetY)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestPoint = point
+                bestOutward = outward
+            }
+            // 取首次穿过桶口的截面并插值，避免拉伸时在离散采样点之间跳动。
+            if let previous, previous.point.y >= targetY && point.y <= targetY {
+                let k = (previous.point.y - targetY) / max(previous.point.y - point.y, 0.001)
+                let root = CGPoint(x: previous.point.x + (point.x - previous.point.x) * k, y: targetY)
+                let nx = previous.outward.dx + (outward.dx - previous.outward.dx) * k
+                let ny = previous.outward.dy + (outward.dy - previous.outward.dy) * k
+                let length = max(hypot(nx, ny), 0.001)
+                return (root, CGVector(dx: nx / length, dy: ny / length))
+            }
+            previous = (point, outward)
+        }
+        return (bestPoint, bestOutward)
+    }
+
     func path(in rect: CGRect) -> Path {
         let e = edges()
         guard let l0 = e.left.first, let rN = e.right.last else {
@@ -165,16 +203,16 @@ struct ProfiledCatBodyShape: Shape {
         for p in e.left.dropFirst() { path.addLine(to: p) }
         path.addQuadCurve(
             to: rN,
-            control: CGPoint(x: endF.center.x + endF.tangent.dx * 12, y: endF.center.y + endF.tangent.dy * 12)
+            control: CGPoint(x: endF.center.x + endF.tangent.dx * endCapExtension,
+                             y: endF.center.y + endF.tangent.dy * endCapExtension)
         )
         for p in e.right.reversed().dropFirst() { path.addLine(to: p) }
         path.addQuadCurve(
             to: l0,
-            control: CGPoint(x: startF.center.x - startF.tangent.dx * 18, y: startF.center.y - startF.tangent.dy * 18)
+            control: CGPoint(x: startF.center.x - startF.tangent.dx * startCapExtension,
+                             y: startF.center.y - startF.tangent.dy * startCapExtension)
         )
         path.closeSubpath()
         return path
     }
 }
-
-

@@ -9,6 +9,7 @@ struct CatBodyLayerView: View {
     let phase: CGFloat
     var isFrontCompartmentExit: Bool = false
     var rimLocalY: CGFloat? = nil
+    var showsTail: Bool = false
 
     /// 按各品种专属体积守恒收窄系数计算中段腰宽（蓝猫最饱满，奶牛橡皮糖最收紧）
     private var waistScale: CGFloat {
@@ -41,17 +42,31 @@ struct CatBodyLayerView: View {
         let dx = endPoint.x - startPoint.x
         let dy = endPoint.y - startPoint.y
 
-        if isFrontCompartmentExit {
-            // 从正面暗格窗口平滑自然引出，随拉拽方向平滑延展，杜绝不自然的下垂垂坠
-            let c1 = CGPoint(x: startPoint.x + dx * 0.28, y: startPoint.y + dy * 0.30)
-            let c2 = CGPoint(x: startPoint.x + dx * 0.70, y: endPoint.y - dy * 0.10)
-            return (c1, c2)
-        }
-
         // 待机或轻微晃动状态：直接使用直线平滑控制点，身体严格保持在桶底与猫头之间，绝不向上冲出或冒头
         if stretchRatio < 0.05 {
             let c1 = CGPoint(x: startPoint.x + dx * 0.33, y: startPoint.y + dy * 0.33)
             let c2 = CGPoint(x: startPoint.x + dx * 0.67, y: startPoint.y + dy * 0.67)
+            return (c1, c2)
+        }
+
+        if isFrontCompartmentExit {
+            // 街头果皮箱专属：唯一开口为「正面投递口暗格」
+            // 窗口物理中心高度：bucketCenter.y - 37 (即 startPoint.y - 55.0)
+            let windowCenterY = startPoint.y - 55.0
+            let sideSign: CGFloat = dx < 0 ? -1.0 : 1.0
+            let absDx = abs(dx)
+
+            // 1. c1 严格在箱内正中央垂直向上，把身体自底座笔直引导至投递口正中心（横向绝不向两侧偏移超过 5pt）
+            let c1 = CGPoint(
+                x: startPoint.x + sideSign * min(absDx * 0.03, 5.0),
+                y: windowCenterY + 4.0
+            )
+
+            // 2. c2 从正面窗口中心向外探出再转折，避免在窗口内部提早侧向拐弯切割边框
+            let c2 = CGPoint(
+                x: startPoint.x + dx * 0.52,
+                y: min(windowCenterY - 4.0, endPoint.y + (dy > 0 ? -16.0 : 6.0))
+            )
             return (c1, c2)
         }
 
@@ -109,7 +124,7 @@ struct CatBodyLayerView: View {
         switch morph {
         case .slime:
             OrangeSlimeSkin.configureProfile(&p)
-        case .bluePlush:
+        case .bluePlush, .cloudCotton:
             BluePlushSkin.configureProfile(&p)
         case .calico:
             CalicoFeltSkin.configureProfile(&p)
@@ -120,6 +135,13 @@ struct CatBodyLayerView: View {
         case .blackShadow:
             BlackShadowSkin.configureProfile(&p)
         }
+
+        if isFrontCompartmentExit {
+            // 街头果皮箱窗口高度仅 24pt，将穿窗身段半宽精修至 13.5pt，完全贴合窗口，杜绝碰顶碰框！
+            p.baseHalfWidth = 13.5
+            p.headHalfWidth = min(p.headHalfWidth, 20.0)
+            p.minHalfWidth = min(p.minHalfWidth, 9.0)
+        }
         return p
     }
 
@@ -127,24 +149,57 @@ struct CatBodyLayerView: View {
         let shape = bodyShape
 
         return ZStack {
+            if showsTail, let rimY = rimLocalY {
+                let attachment = shape.tailAttachment(nearY: rimY - 2)
+                CatTailOnRimView(morph: morph, phase: phase, root: attachment.root, outward: attachment.outward)
+            }
+
+            CatBodySurfaceView(morph: morph, shape: shape, phase: phase, waistScale: waistScale)
+        }
+    }
+}
+
+/// 身体与尾巴共用同一套体积底色、表面纹理和边缘质感。
+struct CatBodySurfaceView: View {
+    let morph: CatMorph
+    let shape: ProfiledCatBodyShape
+    let phase: CGFloat
+    var waistScale: CGFloat = 1
+    var isAppendage: Bool = false
+
+    private var startPoint: CGPoint { shape.startPoint }
+    private var endPoint: CGPoint { shape.endPoint }
+    private var stretchRatio: CGFloat { shape.stretchRatio }
+
+    var body: some View {
+        ZStack {
             // 1. 六大品种专属 3D 圆柱体积与材质纹理绘制
             Canvas { context, _ in
                 let dy = endPoint.y - startPoint.y
-                let spine = buildSmokeSpineControlPoints()
-                let c1 = spine.c1
-                let c2 = spine.c2
+                let c1 = shape.c1
+                let c2 = shape.c2
 
                 let minX = min(startPoint.x, endPoint.x) - 35
                 let maxX = max(startPoint.x, endPoint.x) + 35
                 let fullRect = Path(CGRect(x: minX - 100, y: min(startPoint.y, endPoint.y) - 100, width: (maxX - minX) + 200, height: abs(dy) + 250))
+                let middle = shape.frame(at: 0.5)
+                let halfWidth = shape.halfWidth(at: 0.5)
+                let lightStart = isAppendage
+                    ? CGPoint(x: middle.center.x - middle.normal.dx * halfWidth,
+                              y: middle.center.y - middle.normal.dy * halfWidth)
+                    : CGPoint(x: minX + 5, y: startPoint.y)
+                let lightEnd = isAppendage
+                    ? CGPoint(x: middle.center.x + middle.normal.dx * halfWidth,
+                              y: middle.center.y + middle.normal.dy * halfWidth)
+                    : CGPoint(x: maxX - 5, y: startPoint.y)
 
                 // 底层 3D 圆柱侧光阴影与受光渐变底色
                 context.fill(
                     fullRect,
                     with: .linearGradient(
                         Gradient(stops: cylinderBaseStops),
-                        startPoint: CGPoint(x: minX + 5, y: startPoint.y),
-                        endPoint: CGPoint(x: maxX - 5, y: startPoint.y)
+                        startPoint: lightStart,
+                        endPoint: lightEnd
                     )
                 )
 
@@ -168,6 +223,8 @@ struct CatBodyLayerView: View {
 
                 // 2. 六大品种专属材质纹理绘制
                 switch morph {
+                case .cloudCotton:
+                    CloudCottonSkin.drawBodyTextures(context: &context, shape: shape, phase: phase)
                 case .slime:
                     OrangeSlimeSkin.drawBodyTextures(
                         context: &context,
@@ -228,12 +285,18 @@ struct CatBodyLayerView: View {
             .opacity(morph == .blackShadow ? Double(max(0.58, 0.94 - stretchRatio * 0.35)) : 1.0)
 
             // 2. 各品种专属轮廓边缘质感
-            bodyEdgeStrokeView(shape: shape)
+            if isAppendage {
+                bodyEdgeStrokeView(shape: shape)
+                    .mask(shape.fill(.white).overlay(shape.stroke(.white, lineWidth: 3)))
+            } else {
+                bodyEdgeStrokeView(shape: shape)
+            }
         }
     }
 
     private var cylinderBaseStops: [Gradient.Stop] {
         switch morph {
+        case .cloudCotton: return CloudCottonSkin.cylinderBaseStops
         case .slime: return OrangeSlimeSkin.cylinderBaseStops
         case .bluePlush: return BluePlushSkin.cylinderBaseStops
         case .calico: return CalicoFeltSkin.cylinderBaseStops
@@ -245,6 +308,7 @@ struct CatBodyLayerView: View {
 
     private var bellyHighlightColor: Color {
         switch morph {
+        case .cloudCotton: return .white.opacity(0.7)
         case .slime: return OrangeSlimeSkin.bellyHighlightColor
         case .bluePlush: return BluePlushSkin.bellyHighlightColor
         case .calico: return CalicoFeltSkin.bellyHighlightColor
@@ -257,6 +321,10 @@ struct CatBodyLayerView: View {
     @ViewBuilder
     private func bodyEdgeStrokeView(shape: ProfiledCatBodyShape) -> some View {
         switch morph {
+        case .cloudCotton:
+            Canvas { context, _ in
+                CloudCottonSkin.drawBodyEdge(context: &context, shape: shape)
+            }
         case .slime:
             OrangeSlimeSkin.bodyEdgeStrokeView(shape: shape)
         case .bluePlush:
@@ -398,10 +466,11 @@ public struct CatTrashSceneView: View {
         isStreetBox && !physics.arePawsClingingToRim && currentStretchRatio >= 0.12
     }
 
-    /// 身体起始点：敞口桶位于桶底内部；街头果皮箱位于「上方暗格」内部（门板上沿后方）
+    /// 身体起始点：敞口桶位于桶底内部；街头果皮箱位于深咖前门板后方的内胆底板上
     private var catBaseLocalPoint: CGPoint {
         if isStreetBox {
-            return CGPoint(x: bucketLocalCenter.x, y: bucketLocalCenter.y - 26)
+            // 街头果皮箱：猫身底座位于深咖前门板后方的内胆底板上，受门板遮挡自然隐藏，绝不向投递口露背露肚
+            return CGPoint(x: bucketLocalCenter.x, y: bucketLocalCenter.y + 18)
         }
         return CGPoint(x: bucketLocalCenter.x, y: bucketLocalCenter.y + 15)
     }
@@ -454,7 +523,7 @@ public struct CatTrashSceneView: View {
                 // 放大后的绿桶：爪子扒在高高的桶口折边上
                 return CGPoint(x: bucketLocalCenter.x + 4, y: bucketLocalCenter.y + kGreenBinRimY + 3)
             }
-            return CGPoint(x: bucketLocalCenter.x, y: bucketLocalCenter.y - 31)
+            return CGPoint(x: bucketLocalCenter.x, y: bucketLocalCenter.y - (prefs.selectedBinStyle == .bambooBasket ? 17 : 31))
         } else {
             return CGPoint(
                 x: catHeadLocalPoint.x,
@@ -466,15 +535,20 @@ public struct CatTrashSceneView: View {
     @ViewBuilder
     private var catAssemblyView: some View {
         ZStack {
-            CatBodyLayerView(
-                startPoint: catBaseLocalPoint,
-                endPoint: catHeadLocalPoint,
-                morph: prefs.selectedMorph,
-                stretchRatio: currentStretchRatio,
-                phase: physics.breathingPhase,
-                isFrontCompartmentExit: isStreetBox,
-                rimLocalY: isStreetBox ? nil : rimLocalY
-            )
+            // 街头果皮箱待机未拉伸时，猫猫安稳坐在前门板后方，无需绘制任何拉伸身体，彻底消除穿模露肚露背
+            if !isStreetBox || currentStretchRatio >= 0.04 {
+                CatBodyLayerView(
+                    startPoint: catBaseLocalPoint,
+                    endPoint: catHeadLocalPoint,
+                    morph: prefs.selectedMorph,
+                    stretchRatio: currentStretchRatio,
+                    phase: physics.breathingPhase,
+                    isFrontCompartmentExit: isStreetBox,
+                    rimLocalY: isStreetBox ? nil : rimLocalY,
+                    showsTail: !isStreetBox && !isGreenWheelie &&
+                        (physics.stealthPeekLevel > 0.35 || currentStretchRatio > 0.05)
+                )
+            }
 
             if !isStreetBox {
                 BucketBottomPaperAndHindFeetView(
@@ -507,7 +581,35 @@ public struct CatTrashSceneView: View {
         }
     }
 
+    /// 多显示器视口剔除：判断当前显示器是否包含垃圾桶、拉伸中的猫身/猫头、虚拟零食或粒子，若完全不在本屏则直接跳过整棵视图树渲染
+    private var isSceneVisibleOnThisScreen: Bool {
+        let margin = 240.0 * widgetScale
+        let expandedScreen = screenFrame.insetBy(dx: -margin, dy: -margin)
+        let bucketPt = physics.bucketScreenCenter
+        let headPt = physics.currentHeadScreenPoint
+        let catBounds = CGRect(
+            x: min(bucketPt.x, headPt.x),
+            y: min(bucketPt.y, headPt.y),
+            width: abs(headPt.x - bucketPt.x) + 1,
+            height: abs(headPt.y - bucketPt.y) + 1
+        )
+        if expandedScreen.intersects(catBounds) {
+            return true
+        }
+        if physics.virtualSnacks.contains(where: { expandedScreen.contains($0.screenPosition) }) {
+            return true
+        }
+        if physics.particles.contains(where: { expandedScreen.contains($0.position) }) {
+            return true
+        }
+        return false
+    }
+
     public var body: some View {
+        if !isSceneVisibleOnThisScreen {
+            Color.clear
+                .frame(width: canvasSize.width, height: canvasSize.height)
+        } else {
         ZStack {
             // 0. 桌面测试废纸团（如有生成）
             ForEach(physics.virtualSnacks) { snack in
@@ -516,17 +618,12 @@ public struct CatTrashSceneView: View {
 
             // 1~6. 可自由无损缩放的猫咪与废纸篓整体组件（以桶中心为锚点等比缩放）
             ZStack {
-                // 1. 垃圾桶后壁内阴影层 + 暗格内腔
+                // 1. 垃圾桶后壁内阴影层 + 暗格内腔（静态图层 Equatable 隔离）
                 BasketBackWallView(binStyle: prefs.selectedBinStyle)
+                    .equatable()
                     .position(bucketLocalCenter)
 
-                // 2. 桶沿右侧探出的小翘尾巴（仅无盖敞口桶露出桶沿小尾巴；街头果皮箱与掀盖绿环卫桶不悬空露尾）
-                if !isStreetBox && !isGreenWheelie && (physics.stealthPeekLevel > 0.35 || currentStretchRatio > 0.05) {
-                    CatTailOnRimView(morph: prefs.selectedMorph, phase: physics.breathingPhase)
-                        .position(x: bucketLocalCenter.x + 42, y: bucketLocalCenter.y - 43)
-                }
-
-                // 3. 猫咪完整图层（位于前景桶壁后方；街头果皮箱暗格潜伏阶段受暗格顶棚裁剪）
+                // 2~3. 猫咪完整图层（尾根随身体采样连接；街头暗格潜伏阶段受顶棚裁剪）
                 if isStreetBox {
                     catAssemblyView
                         .clipShape(StreetBoxCompartmentClipShape(bucketCenter: bucketLocalCenter))
@@ -544,8 +641,9 @@ public struct CatTrashSceneView: View {
                     .position(bucketLocalCenter)
                 }
 
-                // 4. 垃圾桶前景层（macOS 一体磨砂壁 / 经典掀盖绿桶身 / 街头果皮箱深咖前门板与外框 / 3D 金属网格）
+                // 4. 垃圾桶前景层（macOS 一体磨砂壁 / 经典掀盖绿桶身 / 街头果皮箱深咖前门板与外框 / 3D 金属网格，静态图层 Equatable 隔离）
                 BasketFrontMeshView(binStyle: prefs.selectedBinStyle)
+                    .equatable()
                     .position(bucketLocalCenter)
 
                 // 4B. 经典掀盖绿环卫桶专属：动态旋转的活动绿色桶盖（待机被猫头/耳朵顶开一道三角缝、微动作被顶得咣当开合或被单爪推起、拖拽时向后大翻转晃荡！）
@@ -580,9 +678,13 @@ public struct CatTrashSceneView: View {
                 .position(pawsLocalPoint)
 
                 // 7. 右键触发：悬浮在周围的分开独立控制按钮（上方进度条 + 右侧垃圾桶icon按钮 + 左侧修改文件/退出）
-                FloatingSurroundingControlsView()
-                    .position(bucketLocalCenter)
-                    .allowsHitTesting(physics.isFloatingMenuVisible)
+                FloatingSurroundingControlsView(
+                    isVisible: physics.isFloatingMenuVisible,
+                    binStyle: prefs.selectedBinStyle
+                )
+                .equatable()
+                .position(bucketLocalCenter)
+                .allowsHitTesting(physics.isFloatingMenuVisible)
             }
             .frame(width: canvasSize.width, height: canvasSize.height)
             .scaleEffect(widgetScale, anchor: bucketAnchor)
@@ -614,6 +716,7 @@ public struct CatTrashSceneView: View {
             }
         }
         .frame(width: canvasSize.width, height: canvasSize.height)
+        }
     }
 
     @ViewBuilder

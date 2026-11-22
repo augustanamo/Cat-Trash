@@ -47,8 +47,8 @@ final class CatTrashAppDelegate: NSObject, NSApplicationDelegate {
 
     /// 使用固定位置的毛玻璃 HUD 菜单栏面板，左右键点击统一呼出，不可被随意拖拽，点击外部自动收起
     private func setupSettingsWindow() {
-        let panelWidth: CGFloat = 416
-        let panelHeight: CGFloat = 560
+        let panelWidth: CGFloat = 430
+        let panelHeight: CGFloat = 580
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
@@ -66,6 +66,7 @@ final class CatTrashAppDelegate: NSObject, NSApplicationDelegate {
 
         let hostingController = NSHostingController(rootView: PreferencesView())
         panel.contentViewController = hostingController
+        panel.setContentSize(NSSize(width: panelWidth, height: panelHeight))
         self.settingsWindow = panel
     }
 

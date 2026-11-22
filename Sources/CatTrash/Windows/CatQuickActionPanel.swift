@@ -79,12 +79,68 @@ struct MiniBinIcon: View {
                         .frame(width: 13, height: 2)
                 }
                 .frame(width: 18, height: 18)
+            case .bambooBasket:
+                VStack(spacing: 1) {
+                    Capsule()
+                        .fill(Color(red: 0.88, green: 0.82, blue: 0.60))
+                        .frame(width: 18, height: 3)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color(red: 0.60, green: 0.54, blue: 0.35))
+                        .frame(width: 15, height: 12)
+                        .overlay(
+                            Image(systemName: "basket")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Color(red: 0.98, green: 0.94, blue: 0.76))
+                        )
+                }
+                .frame(width: 18, height: 18)
             }
         }
     }
 }
 
-// MARK: - 右侧悬浮群组：垃圾桶样式的独立拟物 icon 按钮 (单列流线型排布，未来可支持任意多款皮肤扩展)
+// MARK: - 浮动菜单共用布局（绘制、鼠标穿透与自动收起使用同一份尺寸）
+struct FloatingControlsLayout {
+    static let binButtonSize: CGFloat = 28
+    static let binSpacing: CGFloat = 6
+    static let binColumns = 2
+    static let maximumBinRows = 4
+
+    let style: TrashBinStyle
+    var binCount: Int = TrashBinStyle.allCases.count
+
+    var binGridSize: CGSize {
+        let columns = min(Self.binColumns, max(binCount, 1))
+        let rows = min(Self.maximumBinRows, max(1, (binCount + columns - 1) / columns))
+        return CGSize(
+            width: CGFloat(columns) * Self.binButtonSize + CGFloat(columns - 1) * Self.binSpacing,
+            height: CGFloat(rows) * Self.binButtonSize + CGFloat(rows - 1) * Self.binSpacing
+        )
+    }
+
+    var binsOffsetX: CGFloat {
+        style.sideClearance + (binGridSize.width - Self.binButtonSize) / 2
+    }
+
+    var controlFrames: [CGRect] {
+        [
+            CGRect(x: -111, y: style.topSliderOffsetY - 14, width: 222, height: 28),
+            CGRect(x: binsOffsetX - binGridSize.width / 2 - 3,
+                   y: -binGridSize.height / 2 - 3,
+                   width: binGridSize.width + 6, height: binGridSize.height + 6),
+            CGRect(x: -style.sideClearance - 17, y: -36, width: 34, height: 72)
+        ]
+    }
+
+    func contains(screenPoint: CGPoint, bucketCenter: CGPoint, scale: CGFloat) -> Bool {
+        let s = max(scale, 0.01)
+        let local = CGPoint(x: (screenPoint.x - bucketCenter.x) / s,
+                            y: (bucketCenter.y - screenPoint.y) / s)
+        return controlFrames.contains { $0.contains(local) }
+    }
+}
+
+// MARK: - 右侧悬浮群组：垃圾桶样式独立图标按钮
 struct StandaloneBinButton: View {
     let style: TrashBinStyle
     @ObservedObject var prefs = CatPreferences.shared
@@ -98,7 +154,7 @@ struct StandaloneBinButton: View {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }) {
             MiniBinIcon(style: style)
-                .frame(width: 28, height: 28)
+                .frame(width: FloatingControlsLayout.binButtonSize, height: FloatingControlsLayout.binButtonSize)
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(isSelected ? Color.blue.opacity(0.35) : Color.white.opacity(0.12))
@@ -114,31 +170,35 @@ struct StandaloneBinButton: View {
         }
         .buttonStyle(.plain)
         .help(style.displayName)
+        .accessibilityLabel(style.displayName)
+        .accessibilityValue(isSelected ? "已选中" : "未选中")
     }
 }
 
-struct StandaloneTrashBinsColumn: View {
-    @ObservedObject var prefs = CatPreferences.shared
+struct StandaloneTrashBinsGrid: View {
     private let allStyles = TrashBinStyle.allCases
+    private let columns = Array(
+        repeating: GridItem(.fixed(FloatingControlsLayout.binButtonSize), spacing: FloatingControlsLayout.binSpacing),
+        count: FloatingControlsLayout.binColumns
+    )
+
+    private var grid: some View {
+        LazyVGrid(columns: columns, spacing: FloatingControlsLayout.binSpacing) {
+            ForEach(allStyles, id: \.self) { style in
+                StandaloneBinButton(style: style)
+            }
+        }
+    }
 
     var body: some View {
-        // 单列纵向排布：宽度仅 28pt，紧凑不占横向空间，未来皮肤增加时可流畅纵向扩展或滚动
-        if allStyles.count <= 4 {
-            VStack(spacing: 5) {
-                ForEach(allStyles, id: \.self) { style in
-                    StandaloneBinButton(style: style)
-                }
-            }
+        let size = FloatingControlsLayout(style: .macOSFrosted).binGridSize
+        if allStyles.count <= FloatingControlsLayout.binColumns * FloatingControlsLayout.maximumBinRows {
+            grid.frame(width: size.width, height: size.height)
         } else {
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 5) {
-                    ForEach(allStyles, id: \.self) { style in
-                        StandaloneBinButton(style: style)
-                    }
-                }
-                .padding(.vertical, 2)
+                grid
             }
-            .frame(width: 32, height: 136)
+            .frame(width: size.width, height: size.height)
         }
     }
 }
@@ -203,48 +263,45 @@ struct StandaloneMorphSliderBar: View {
     @ObservedObject var sliderModel: CatMorphSliderModel = CatPhysicsEngine.shared.morphSliderModel
 
     var body: some View {
-        CatMorphSliderView(model: sliderModel, trackWidth: 175)
+        CatMorphSliderView(model: sliderModel, trackWidth: 198)
     }
 }
 
 // MARK: - 悬浮在猫桶周围的独立按钮群组（上方进度条 + 右侧垃圾桶icon按钮 + 左侧修改/退出）
-public struct FloatingSurroundingControlsView: View {
-    @ObservedObject var prefs = CatPreferences.shared
-    @ObservedObject var physics = CatPhysicsEngine.shared
+public struct FloatingSurroundingControlsView: View, Equatable {
+    public let isVisible: Bool
+    public let binStyle: TrashBinStyle
 
-    public init() {}
-
-    /// 自适应间距：根据当前垃圾桶尺寸自动外展或内收
-    private var sideClearance: CGFloat {
-        prefs.selectedBinStyle.sideClearance
+    public init(isVisible: Bool, binStyle: TrashBinStyle) {
+        self.isVisible = isVisible
+        self.binStyle = binStyle
     }
 
-    /// 自适应高度：根据当前垃圾桶高度与顶盖翻折高度自动抬升
-    private var topSliderYOffset: CGFloat {
-        prefs.selectedBinStyle.topSliderOffsetY
+    private var layout: FloatingControlsLayout {
+        FloatingControlsLayout(style: binStyle)
     }
 
     public var body: some View {
         ZStack {
             // 1. 上方悬浮进度条（原地在正上方以自身中心缩放淡入，绝不从屏幕左上角飞入）
             StandaloneMorphSliderBar()
-                .offset(y: topSliderYOffset)
-                .scaleEffect(physics.isFloatingMenuVisible ? 1.0 : 0.76, anchor: .center)
-                .opacity(physics.isFloatingMenuVisible ? 1.0 : 0.0)
+                .offset(y: layout.style.topSliderOffsetY)
+                .scaleEffect(isVisible ? 1.0 : 0.76, anchor: .center)
+                .opacity(isVisible ? 1.0 : 0.0)
 
             // 2. 右侧悬浮垃圾桶 icon 按钮（原地在右侧以自身中心缩放淡入）
-            StandaloneTrashBinsColumn()
-                .offset(x: sideClearance)
-                .scaleEffect(physics.isFloatingMenuVisible ? 1.0 : 0.76, anchor: .center)
-                .opacity(physics.isFloatingMenuVisible ? 1.0 : 0.0)
+            StandaloneTrashBinsGrid()
+                .offset(x: layout.binsOffsetX)
+                .scaleEffect(isVisible ? 1.0 : 0.76, anchor: .center)
+                .opacity(isVisible ? 1.0 : 0.0)
 
             // 3. 左侧悬浮：修改文件按钮 + 退出按钮（原地在左侧以自身中心缩放淡入）
             StandaloneLeftControls()
-                .offset(x: -sideClearance)
-                .scaleEffect(physics.isFloatingMenuVisible ? 1.0 : 0.76, anchor: .center)
-                .opacity(physics.isFloatingMenuVisible ? 1.0 : 0.0)
+                .offset(x: -layout.style.sideClearance)
+                .scaleEffect(isVisible ? 1.0 : 0.76, anchor: .center)
+                .opacity(isVisible ? 1.0 : 0.0)
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: physics.isFloatingMenuVisible)
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: prefs.selectedBinStyle)
+        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: isVisible)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: binStyle)
     }
 }

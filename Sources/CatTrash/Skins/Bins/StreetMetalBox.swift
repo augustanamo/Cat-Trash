@@ -20,32 +20,46 @@ struct StreetBoxCompartmentClipShape: Shape {
 }
 
 /// 街头金属果皮箱专属：钻出正面窗口阶段的前景裁剪。
-/// 仅裁切箱体正面门板矩形区域（防止门板区域内部穿模），箱体两侧及外部所有空间均完全放开，绝不切断外部延展的猫咪身体与头部！
+/// 严格保留投递口真实开孔与箱外桌面空间，坚决剔除顶棚横梁、左右立柱与前门板，杜绝任何穿模穿墙！
 struct StreetBoxPoppedCatClipShape: Shape {
     let bucketCenter: CGPoint
 
     func path(in rect: CGRect) -> Path {
         let boxLeft = bucketCenter.x - 37.0
         let boxRight = bucketCenter.x + 37.0
+        let boxTopY = bucketCenter.y - 52.0
+        let windowApertureTopY = bucketCenter.y - 48.0
         let doorTopY = bucketCenter.y - 25.5
         let doorBotY = bucketCenter.y + 66.0
 
         var path = Path()
-        // 1. 顶部整个水平区域 (y <= doorTopY)，包括箱子上方投物口与全屏上方桌面
-        path.addRect(CGRect(x: 0, y: 0, width: rect.width, height: max(doorTopY, 0)))
 
-        // 2. 箱体左侧整个外部桌面空间 (x < boxLeft)，完全放开，确保向左拉伸时猫头与身体完整无缺
-        if boxLeft > 0 {
-            path.addRect(CGRect(x: 0, y: doorTopY, width: max(boxLeft, 0), height: max(rect.height - doorTopY, 0)))
+        // 1. 箱体上方整个开阔桌面 (y < boxTopY)
+        if boxTopY > 0 {
+            path.addRect(CGRect(x: 0, y: 0, width: rect.width, height: boxTopY))
         }
 
-        // 3. 箱体右侧整个外部桌面空间 (x > boxRight)，完全放开，确保向右拉伸时猫头与身体完整无缺
+        // 2. 箱体左侧整个外部桌面 (x < boxLeft)，完全放开，确保向左拉伸时猫头与身体完整无缺
+        if boxLeft > 0 {
+            path.addRect(CGRect(x: 0, y: max(boxTopY, 0), width: boxLeft, height: max(rect.height - boxTopY, 0)))
+        }
+
+        // 3. 箱体右侧整个外部桌面 (x > boxRight)，完全放开，确保向右拉伸时猫头与身体完整无缺
         if boxRight < rect.width {
-            path.addRect(CGRect(x: boxRight, y: doorTopY, width: max(rect.width - boxRight, 0), height: max(rect.height - doorTopY, 0)))
+            path.addRect(CGRect(x: boxRight, y: max(boxTopY, 0), width: max(rect.width - boxRight, 0), height: max(rect.height - boxTopY, 0)))
         }
 
         // 4. 箱体正下方地面区域 (y > doorBotY)
         path.addRect(CGRect(x: boxLeft, y: doorBotY, width: max(boxRight - boxLeft, 0), height: max(rect.height - doorBotY, 0)))
+
+        // 5. 核心：正面投递口内部镂空开孔矩形（左右两侧避开 2.5pt 侧立柱，顶部避开顶棚横梁，底部止于门沿）
+        let windowRect = CGRect(
+            x: boxLeft + 2.5,
+            y: windowApertureTopY,
+            width: max(boxRight - boxLeft - 5.0, 0),
+            height: max(doorTopY - windowApertureTopY, 0)
+        )
+        path.addRect(windowRect)
 
         return path
     }

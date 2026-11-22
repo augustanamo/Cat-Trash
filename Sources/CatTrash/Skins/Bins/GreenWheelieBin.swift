@@ -514,6 +514,7 @@ struct GreenBinLidPushingPawView: View {
         case .tuxedo: return Color.white
         case .siamese: return Color(red: 0.32, green: 0.19, blue: 0.13)
         case .blackShadow: return Color(red: 0.08, green: 0.08, blue: 0.12)
+        case .cloudCotton: return Color(red: 0.98, green: 0.98, blue: 0.96)
         }
     }
 

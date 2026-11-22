@@ -32,6 +32,10 @@ public final class CatSoundEngine {
         let p = Float(min(max(progress, 0), 1))
 
         switch morph {
+        case .cloudCotton:
+            // 云絮拉伸音只跟随猫咪材质，与桶样式无关。
+            playSystemSample(named: "Blow", rate: 0.72 + p * 0.26, volume: vol * 0.26)
+            playSystemSample(named: "Bottle", rate: 0.70 + p * 0.18, volume: vol * 0.14)
         case .slime:
             playSystemSample(named: "Pop", rate: 0.75 + p * 0.95, volume: vol * 0.28)
         case .bluePlush:
@@ -207,6 +211,10 @@ public final class CatSoundEngine {
         let vol = Float(prefs.soundVolume)
 
         switch morph {
+        case .cloudCotton:
+            // 棉絮轻柔归位，沿用云朵猫的过阻尼回弹。
+            playSystemSample(named: "Blow", rate: 0.66, volume: vol * 0.42)
+            playSystemSample(named: "Bottle", rate: 0.74, volume: vol * 0.34)
         case .slime:
             // “Duang Duang” 果冻抖动回弹
             playSystemSample(named: "Submarine", rate: 1.38, volume: vol * 0.52)
@@ -286,6 +294,9 @@ public final class CatSoundEngine {
         case .metalMesh:
             // 经典金属网格镂空垃圾桶：清爽利落的微弱钢丝弹跳微响
             playSystemSample(named: "Tink", rate: 1.35, volume: vol * 0.28)
+        case .bambooBasket:
+            // 竹篓落定时的轻柔纤维触碰声。
+            playSystemSample(named: "Blow", rate: 0.85, volume: vol * 0.20)
         }
     }
 

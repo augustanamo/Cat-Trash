@@ -147,7 +147,7 @@ public struct PreferencesView: View {
 
                         Picker("光影模式", selection: $prefs.dayNightMode) {
                             ForEach(DayNightMode.allCases) { mode in
-                                Text(mode.displayName).tag(mode)
+                                Text(mode.shortName).tag(mode)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -260,7 +260,9 @@ public struct PreferencesView: View {
                             }
                             .controlSize(.small)
                             .disabled(trashService.recentRecords.isEmpty)
+                        }
 
+                        HStack(spacing: 8) {
                             Button {
                                 detector.requestAccessibilityPermission()
                             } label: {
@@ -310,7 +312,7 @@ public struct PreferencesView: View {
             .padding(.vertical, 10)
             .background(Color.primary.opacity(0.03))
         }
-        .frame(width: 416, height: 560)
+        .frame(width: 430, height: 580)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(

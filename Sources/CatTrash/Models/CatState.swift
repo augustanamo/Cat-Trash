@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-// MARK: - 猫猫品种与专属材质物理体系 (6 Breeds × 6 Materials)
+// MARK: - 猫猫品种与专属材质物理体系
 public enum CatMorph: String, CaseIterable, Identifiable, Codable {
     case slime = "slime"             // 1. 橘猫 · 史莱姆果冻 (Slime / Jelly)
     case bluePlush = "bluePlush"     // 2. 蓝猫 · 短毛绒球 (Short Plush / Pom-Pom)
@@ -9,6 +9,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
     case tuxedo = "tuxedo"           // 4. 奶牛猫 · 橡皮糖软胶 (Gummy / Rubber)
     case siamese = "siamese"         // 5. 暹罗猫 · 软糯麻薯芝士 (Mochi / Melted Cheese)
     case blackShadow = "blackShadow" // 6. 黑猫 · 暗影水墨烟雾 (Shadow / Smoke Ink)
+    case cloudCotton = "cloudCotton" // 7. 云朵猫 · 蓬松棉花糖
 
     public var id: String { rawValue }
 
@@ -20,6 +21,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return "奶牛 · 高弹橡皮糖"
         case .siamese: return "暹罗 · 软糯拉丝麻薯"
         case .blackShadow: return "黑猫 · 暗影水墨烟雾"
+        case .cloudCotton: return "云朵猫 · 蓬松棉花糖"
         }
     }
 
@@ -31,6 +33,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return "哑光软胶高张力皮筋，松手啪地脆弹跳动"
         case .siamese: return "奶白焦糖高黏度拉丝，慢吞吞吸溜滑回桶内"
         case .blackShadow: return "纯黑烟雾墨滴消散，金黄亮眼黑洞瞬吸归位"
+        case .cloudCotton: return "奶白云絮与柔软边缘，轻飘飘缓慢归位"
         }
     }
 
@@ -42,6 +45,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return "bolt.fill"
         case .siamese: return "flame.fill"
         case .blackShadow: return "moon.stars.fill"
+        case .cloudCotton: return "cloud.fill"
         }
     }
 
@@ -53,6 +57,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return Color(red: 0.16, green: 0.17, blue: 0.20)
         case .siamese: return Color(red: 0.96, green: 0.92, blue: 0.84)
         case .blackShadow: return Color(red: 0.08, green: 0.08, blue: 0.11)
+        case .cloudCotton: return Color(red: 0.98, green: 0.98, blue: 0.96)
         }
     }
 
@@ -64,6 +69,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return Color(red: 0.96, green: 0.97, blue: 0.99)
         case .siamese: return Color(red: 0.32, green: 0.20, blue: 0.14)
         case .blackShadow: return Color(red: 0.22, green: 0.18, blue: 0.32)
+        case .cloudCotton: return Color(red: 0.84, green: 0.88, blue: 0.93)
         }
     }
 
@@ -75,6 +81,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return Color(red: 0.96, green: 0.62, blue: 0.70)
         case .siamese: return Color(red: 0.24, green: 0.14, blue: 0.10)
         case .blackShadow: return Color(red: 0.15, green: 0.14, blue: 0.20)
+        case .cloudCotton: return Color(red: 0.91, green: 0.73, blue: 0.75).opacity(0.55)
         }
     }
 
@@ -91,6 +98,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return 540.0      // 高张力橡皮糖“啪”地脆弹
         case .siamese: return 88.0      // 软糯麻薯慢吞吞“吸溜”滑回
         case .blackShadow: return 72.0  // 暗影烟雾：极低刚度流体聚拢，绝无硬弹簧脆弹
+        case .cloudCotton: return 68.0
         }
     }
 
@@ -103,6 +111,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return 13.0      // 弹力极大，回桶上下弹跳两下
         case .siamese: return 20.5     // 高黏度过阻尼慢滑
         case .blackShadow: return 26.0 // 强流体粘滞过阻尼，烟雾平滑飘逸收拢聚拢
+        case .cloudCotton: return 29.0
         }
     }
 
@@ -115,6 +124,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return 1.42      // 橡皮糖初期紧绷需要用力拽
         case .siamese: return 0.72     // 麻薯芝士绵软顺滑易拉出
         case .blackShadow: return 0.65 // 烟雾轻灵无阻力
+        case .cloudCotton: return 0.65
         }
     }
 
@@ -127,6 +137,7 @@ public enum CatMorph: String, CaseIterable, Identifiable, Codable {
         case .tuxedo: return 0.54      // 橡皮糖皮筋中段急剧收窄紧绷
         case .siamese: return 0.38     // 芝士麻薯拉丝收窄
         case .blackShadow: return 0.42 // 烟雾流体拉长
+        case .cloudCotton: return 0.10
         }
     }
 }
@@ -203,6 +214,7 @@ public enum TrashBinStyle: String, CaseIterable, Identifiable, Codable {
     case greenWheelieBin = "greenWheelieBin"   // 经典绿色可回收/环卫掀盖大垃圾桶（活动掀盖核心互动）
     case streetMetalBox = "streetMetalBox"     // 街头立式深咖烤漆金属果皮箱（带扔垃圾小人图标）
     case metalMesh = "metalMesh"               // 3D 高光镀铬金属编织网格桶
+    case bambooBasket = "bambooBasket"         // 复古中式竹编篓
 
     public var id: String { rawValue }
 
@@ -212,6 +224,7 @@ public enum TrashBinStyle: String, CaseIterable, Identifiable, Codable {
         case .greenWheelieBin: return "经典掀盖绿桶"
         case .streetMetalBox: return "街头金属果皮箱"
         case .metalMesh: return "3D 金属网格桶"
+        case .bambooBasket: return "复古中式竹编篓"
         }
     }
 
@@ -221,6 +234,7 @@ public enum TrashBinStyle: String, CaseIterable, Identifiable, Codable {
         case .greenWheelieBin: return "活动掀盖 · 推井盖探头"
         case .streetMetalBox: return "烤漆铁箱 · 暗格钻出"
         case .metalMesh: return "镀铬亮银 · 曲面螺旋网"
+        case .bambooBasket: return "暖色竹编 · 圆筒交错织纹"
         }
     }
 
@@ -230,6 +244,7 @@ public enum TrashBinStyle: String, CaseIterable, Identifiable, Codable {
         case .greenWheelieBin: return "arrow.3.trianglepath"
         case .streetMetalBox: return "archivebox.fill"
         case .metalMesh: return "trash.circle"
+        case .bambooBasket: return "basket"
         }
     }
 
@@ -238,7 +253,7 @@ public enum TrashBinStyle: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .macOSFrosted:
             return 58
-        case .metalMesh:
+        case .metalMesh, .bambooBasket:
             return 62
         case .streetMetalBox:
             return 62
@@ -252,7 +267,7 @@ public enum TrashBinStyle: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .macOSFrosted:
             return -72
-        case .metalMesh:
+        case .metalMesh, .bambooBasket:
             return -72
         case .streetMetalBox:
             return -90
@@ -293,69 +308,70 @@ public struct TrashedRecord: Identifiable {
 @MainActor
 public final class CatPreferences: ObservableObject {
     public static let shared = CatPreferences()
+    private let defaults: UserDefaults
 
     @Published public var selectedMorph: CatMorph {
-        didSet { UserDefaults.standard.set(selectedMorph.rawValue, forKey: Keys.morph) }
+        didSet { defaults.set(selectedMorph.rawValue, forKey: Keys.morph) }
     }
 
-    /// 垃圾桶外观样式（macOS 原生磨砂白桶 / 3D 金属网格桶）
+    /// 垃圾桶外观样式，独立于猫咪材质。
     @Published public var selectedBinStyle: TrashBinStyle {
-        didSet { UserDefaults.standard.set(selectedBinStyle.rawValue, forKey: Keys.binStyle) }
+        didSet { defaults.set(selectedBinStyle.rawValue, forKey: Keys.binStyle) }
     }
 
     /// 整体外观尺寸缩放倍率 (0.6x 小巧 ~ 2.6x 细节特写，默认 1.0x)
     @Published public var widgetScale: Double {
-        didSet { UserDefaults.standard.set(widgetScale, forKey: Keys.widgetScale) }
+        didSet { defaults.set(widgetScale, forKey: Keys.widgetScale) }
     }
 
     /// 伸展阻尼系数 (0.2 轻松拉长 ~ 1.0 强阻尼高回弹)
     @Published public var stretchDamping: Double {
-        didSet { UserDefaults.standard.set(stretchDamping, forKey: Keys.stretchDamping) }
+        didSet { defaults.set(stretchDamping, forKey: Keys.stretchDamping) }
     }
 
     /// 回弹速度倍率 (0.5 慢速果冻感 ~ 1.8 快速弹射)
     @Published public var snapSpeed: Double {
-        didSet { UserDefaults.standard.set(snapSpeed, forKey: Keys.snapSpeed) }
+        didSet { defaults.set(snapSpeed, forKey: Keys.snapSpeed) }
     }
 
     /// 咀嚼吞咽与饱嗝音效开关
     @Published public var chompSoundEnabled: Bool {
-        didSet { UserDefaults.standard.set(chompSoundEnabled, forKey: Keys.chompSound) }
+        didSet { defaults.set(chompSoundEnabled, forKey: Keys.chompSound) }
     }
 
     /// 猫咪叫声、呼噜与拉伸音效开关
     @Published public var vocalSoundEnabled: Bool {
-        didSet { UserDefaults.standard.set(vocalSoundEnabled, forKey: Keys.vocalSound) }
+        didSet { defaults.set(vocalSoundEnabled, forKey: Keys.vocalSound) }
     }
 
     /// 主音量 (0.0 ~ 1.0)
     @Published public var soundVolume: Double {
-        didSet { UserDefaults.standard.set(soundVolume, forKey: Keys.soundVolume) }
+        didSet { defaults.set(soundVolume, forKey: Keys.soundVolume) }
     }
 
     /// 常驻位置模式
     @Published public var placementMode: PlacementMode {
-        didSet { UserDefaults.standard.set(placementMode.rawValue, forKey: Keys.placementMode) }
+        didSet { defaults.set(placementMode.rawValue, forKey: Keys.placementMode) }
     }
 
     /// 自定义保存的屏幕坐标（桶中心点）
     @Published public var customBucketOriginX: Double {
-        didSet { UserDefaults.standard.set(customBucketOriginX, forKey: Keys.originX) }
+        didSet { defaults.set(customBucketOriginX, forKey: Keys.originX) }
     }
 
     @Published public var customBucketOriginY: Double {
-        didSet { UserDefaults.standard.set(customBucketOriginY, forKey: Keys.originY) }
+        didSet { defaults.set(customBucketOriginY, forKey: Keys.originY) }
     }
 
     /// 累计吃掉的垃圾文件数
     @Published public var totalTrashedCount: Int {
-        didSet { UserDefaults.standard.set(totalTrashedCount, forKey: Keys.totalTrashedCount) }
+        didSet { defaults.set(totalTrashedCount, forKey: Keys.totalTrashedCount) }
     }
 
     /// 自然日夜光影模式（自动跟随时间 / 常驻白昼 / 常驻夜晚）
     @Published public var dayNightMode: DayNightMode {
         didSet {
-            UserDefaults.standard.set(dayNightMode.rawValue, forKey: Keys.dayNightMode)
+            defaults.set(dayNightMode.rawValue, forKey: Keys.dayNightMode)
             EnvironmentLightingManager.shared.updateTargetFactor(immediate: true)
         }
     }
@@ -376,8 +392,9 @@ public final class CatPreferences: ObservableObject {
         static let dayNightMode = "catTrash.dayNightMode"
     }
 
-    private init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        Self.migrateLegacyCloudBambooSelection(in: defaults)
         if let rawMorph = defaults.string(forKey: Keys.morph),
            let morph = CatMorph(rawValue: rawMorph) {
             self.selectedMorph = morph
@@ -417,5 +434,18 @@ public final class CatPreferences: ObservableObject {
         } else {
             self.dayNightMode = .auto
         }
+    }
+
+    /// 仅迁移原来实际启用的配套组合，已有猫咪与桶的原始值保持兼容。
+    static func migrateLegacyCloudBambooSelection(in defaults: UserDefaults) {
+        let legacyKey = "catTrash.cloudBambooSkinEnabled"
+        guard defaults.object(forKey: legacyKey) != nil else { return }
+        if defaults.bool(forKey: legacyKey),
+           defaults.string(forKey: Keys.morph) == CatMorph.bluePlush.rawValue,
+           defaults.string(forKey: Keys.binStyle) == TrashBinStyle.metalMesh.rawValue {
+            defaults.set(CatMorph.cloudCotton.rawValue, forKey: Keys.morph)
+            defaults.set(TrashBinStyle.bambooBasket.rawValue, forKey: Keys.binStyle)
+        }
+        defaults.removeObject(forKey: legacyKey)
     }
 }

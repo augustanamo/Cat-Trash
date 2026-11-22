@@ -214,6 +214,8 @@ struct CatHeadView: View {
     // MARK: - 各品种专属头部渐变色
     private var headGradientStops: [Gradient.Stop] {
         switch morph {
+        case .cloudCotton:
+            return CloudCottonSkin.headGradientStops
         case .slime:
             // 1. 橘猫果冻：焦糖琥珀橘 -> 奶油白半透明果冻
             return [
@@ -260,6 +262,10 @@ struct CatHeadView: View {
     @ViewBuilder
     private func breedPatternAndMaterialOverlay(headShape: MochiCatHeadShape) -> some View {
         switch morph {
+        case .cloudCotton:
+            CloudCottonHeadMaterialOverlay(
+                headShape: headShape, earFlatten: earFlattenFactor,
+                leftEarTwitch: leftEarTwitch, rightEarTwitch: rightEarTwitch)
         case .slime:
             // 1. 橘猫史莱姆：虎斑纹 + 奶油下半脸晕染 + 水润果冻镜面高光斑
             TabbyStripesOverlay(stripeColor: Color(red: 0.78, green: 0.30, blue: 0.06).opacity(0.58))
@@ -1056,9 +1062,12 @@ struct MeltingRimPawsView: View {
 struct MeltingDripPaw: View {
     let morph: CatMorph
     let isLeft: Bool
+    private var usesCloudMaterial: Bool { morph == .cloudCotton }
 
     private var pawColors: [Color] {
         switch morph {
+        case .cloudCotton:
+            return [.white, CloudCottonSkin.colors[0]]
         case .slime:
             return [Color(red: 0.98, green: 0.68, blue: 0.28), Color(red: 1.00, green: 0.90, blue: 0.72)]
         case .bluePlush:
@@ -1087,7 +1096,9 @@ struct MeltingDripPaw: View {
                 .frame(width: 12, height: 15)
                 .overlay(
                     Group {
-                        if morph == .bluePlush {
+                        if usesCloudMaterial {
+                            Capsule().stroke(Color.white.opacity(0.8), lineWidth: 2).blur(radius: 0.7)
+                        } else if morph == .bluePlush {
                             // 蓝猫毛绒爪：放射状蓬松短毛刺
                             Capsule()
                                 .stroke(
@@ -1116,9 +1127,11 @@ struct MeltingDripPaw: View {
 struct StretchedPawWithPad: View {
     let morph: CatMorph
     let isLeft: Bool
+    private var usesCloudMaterial: Bool { morph == .cloudCotton }
 
     private var pawFill: Color {
         switch morph {
+        case .cloudCotton: return CloudCottonSkin.colors[1]
         case .slime: return Color(red: 1.00, green: 0.90, blue: 0.74)
         case .bluePlush: return Color(red: 0.66, green: 0.80, blue: 0.96)
         case .calico: return Color(red: 0.97, green: 0.94, blue: 0.88)
@@ -1135,7 +1148,9 @@ struct StretchedPawWithPad: View {
                 .frame(width: 14, height: 12)
                 .overlay(
                     Group {
-                        if morph == .bluePlush {
+                        if usesCloudMaterial {
+                            Ellipse().stroke(Color.white.opacity(0.8), lineWidth: 2).blur(radius: 0.7)
+                        } else if morph == .bluePlush {
                             Ellipse()
                                 .stroke(
                                     Color(red: 0.84, green: 0.93, blue: 1.0),
@@ -1168,50 +1183,40 @@ struct StretchedPawWithPad: View {
     }
 }
 
-/// 桶右侧探出的小翘尾巴（各品种专属材质配色）
+/// 尾根与共用身体轮廓重叠，只有尾尖轻摆，不旋转整个组件。
 struct CatTailOnRimView: View {
     let morph: CatMorph
     let phase: CGFloat
+    let root: CGPoint
+    let outward: CGVector
 
-    private var tailColors: [Color] {
-        switch morph {
-        case .slime:
-            return [Color(red: 0.96, green: 0.52, blue: 0.16), Color(red: 1.00, green: 0.78, blue: 0.42)]
-        case .bluePlush:
-            return [Color(red: 0.44, green: 0.60, blue: 0.84), Color(red: 0.30, green: 0.24, blue: 0.52)]
-        case .calico:
-            return [Color(red: 0.24, green: 0.23, blue: 0.22), Color(red: 0.93, green: 0.52, blue: 0.20)]
-        case .tuxedo:
-            return [Color(red: 0.14, green: 0.15, blue: 0.18), Color.white]
-        case .siamese:
-            return [Color(red: 0.26, green: 0.15, blue: 0.10), Color(red: 0.18, green: 0.10, blue: 0.07)]
-        case .blackShadow:
-            return [Color(red: 0.06, green: 0.06, blue: 0.08), Color(red: 0.16, green: 0.14, blue: 0.24).opacity(0.6)]
-        }
+    private var tailShape: ProfiledCatBodyShape {
+        let sway = sin(phase * 0.9) * 1.2
+        let curl = CGVector(dx: outward.dy, dy: -outward.dx)
+        let tip = CGPoint(x: root.x + outward.dx * 28 + curl.dx * (12 + sway),
+                          y: root.y + outward.dy * 28 + curl.dy * (12 + sway))
+        var shape = ProfiledCatBodyShape(
+            startPoint: root, endPoint: tip,
+            c1: CGPoint(x: root.x + outward.dx * 8 + curl.dx,
+                        y: root.y + outward.dy * 8 + curl.dy),
+            c2: CGPoint(x: root.x + outward.dx * 20 + curl.dx * (18 + sway * 0.5),
+                        y: root.y + outward.dy * 20 + curl.dy * (18 + sway * 0.5)),
+            baseHalfWidth: 4.8, headHalfWidth: 3.8, stretchRatio: 0
+        )
+        shape.minHalfWidth = 3.8
+        shape.pinch = 0
+        shape.endCapExtension = 7.6
+        shape.startCapExtension = 9.6
+        return shape
     }
 
     var body: some View {
         if morph == .blackShadow {
             EmptyView()
         } else {
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: 14))
-                path.addCurve(
-                    to: CGPoint(x: 17, y: 6),
-                    control1: CGPoint(x: 6, y: 2),
-                    control2: CGPoint(x: 16, y: -2)
-                )
-            }
-            .stroke(
-                LinearGradient(
-                    colors: tailColors,
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                style: StrokeStyle(lineWidth: 6.5, lineCap: .round)
-            )
-            .frame(width: 20, height: 18)
-            .rotationEffect(.degrees(sin(phase * 0.9) * 8), anchor: .bottomLeading)
+            let shape = tailShape
+            CatBodySurfaceView(morph: morph, shape: shape, phase: phase,
+                               waistScale: shape.baseHalfWidth / 25, isAppendage: true)
         }
     }
 }

@@ -2,39 +2,57 @@ import SwiftUI
 
 // MARK: - 垃圾桶前后景调度视图与桶底足部组件
 
-/// 垃圾桶后壁总调度视图（根据选中外观分发至对应独立皮肤）
-struct BasketBackWallView: View {
+/// 垃圾桶后壁总调度视图（根据选中外观分发至对应独立皮肤，支持 Equatable 与 GPU 光栅化缓存以避免每帧重绘）
+struct BasketBackWallView: View, Equatable {
     var binStyle: TrashBinStyle = CatPreferences.shared.selectedBinStyle
 
+    static func == (lhs: BasketBackWallView, rhs: BasketBackWallView) -> Bool {
+        lhs.binStyle == rhs.binStyle
+    }
+
     var body: some View {
-        switch binStyle {
-        case .macOSFrosted:
-            MacOSFrostedBackWallView()
-        case .greenWheelieBin:
-            GreenWheelieBinBackWallView()
-        case .streetMetalBox:
-            StreetMetalBoxBackWallView()
-        case .metalMesh:
-            MetalMeshBackWallView()
+        Group {
+            switch binStyle {
+            case .macOSFrosted:
+                MacOSFrostedBackWallView()
+            case .greenWheelieBin:
+                GreenWheelieBinBackWallView()
+            case .streetMetalBox:
+                StreetMetalBoxBackWallView()
+            case .metalMesh:
+                MetalMeshBackWallView()
+            case .bambooBasket:
+                BambooBasketBackWallView()
+            }
         }
+        .drawingGroup()
     }
 }
 
-/// 垃圾桶前景总调度视图（根据选中外观分发至对应独立皮肤）
-struct BasketFrontMeshView: View {
+/// 垃圾桶前景总调度视图（根据选中外观分发至对应独立皮肤，支持 Equatable 与 GPU 光栅化缓存以避免每帧重绘）
+struct BasketFrontMeshView: View, Equatable {
     var binStyle: TrashBinStyle = CatPreferences.shared.selectedBinStyle
 
+    static func == (lhs: BasketFrontMeshView, rhs: BasketFrontMeshView) -> Bool {
+        lhs.binStyle == rhs.binStyle
+    }
+
     var body: some View {
-        switch binStyle {
-        case .macOSFrosted:
-            MacOSFrostedFrontWallView()
-        case .greenWheelieBin:
-            GreenWheelieBinFrontWallView()
-        case .streetMetalBox:
-            StreetMetalBoxFrontWallView()
-        case .metalMesh:
-            MetalMeshFrontWallView()
+        Group {
+            switch binStyle {
+            case .macOSFrosted:
+                MacOSFrostedFrontWallView()
+            case .greenWheelieBin:
+                GreenWheelieBinFrontWallView()
+            case .streetMetalBox:
+                StreetMetalBoxFrontWallView()
+            case .metalMesh:
+                MetalMeshFrontWallView()
+            case .bambooBasket:
+                BambooBasketFrontWallView()
+            }
         }
+        .drawingGroup()
     }
 }
 
@@ -51,6 +69,7 @@ struct BucketBottomPaperAndHindFeetView: View {
         case .tuxedo: return Color.white
         case .siamese: return Color(red: 0.30, green: 0.18, blue: 0.12)
         case .blackShadow: return Color(red: 0.08, green: 0.08, blue: 0.12)
+        case .cloudCotton: return Color(red: 0.98, green: 0.98, blue: 0.96)
         }
     }
 
